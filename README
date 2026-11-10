@@ -1,6 +1,6 @@
+This is lua-android (Lua 5.5.1 for Android).
 
-This is Lua 5.3.0, released on 06 Jan 2015.
+For complete documentation, Android integration guide, Kotlin wrapper API,
+built-in JSON, and Regex modules, please see README.md.
 
-For installation instructions, license details, and
-further information about Lua, see doc/readme.html.
-
+For installation instructions and official Lua details, see doc/readme.html.

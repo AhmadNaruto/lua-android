@@ -6,7 +6,6 @@ add_library(${PROJECT_NAME} SHARED
     src/lapi.c
     src/lauxlib.c
     src/lbaselib.c
-    src/lbitlib.c
     src/lcode.c
     src/lcorolib.c
     src/lctype.c
@@ -36,16 +35,30 @@ add_library(${PROJECT_NAME} SHARED
     src/lutf8lib.c
     src/lvm.c
     src/lzio.c
+    src/cJSON.c
+    src/ljsonlib.c
+    src/lregexlib.c
 )
 
-target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+if(ANDROID)
+    target_sources(${PROJECT_NAME} PRIVATE src/lua_jni.c)
+endif()
+
+target_include_directories(${PROJECT_NAME}
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    LUA_ANSI
-    "l_getlocaledecpoint()"
+    LUA_USE_LINUX
+    "lua_getlocaledecpoint()='.'"
 )
 
-
+find_library(LIBDL dl)
+if(LIBDL)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBDL} m)
+else()
+    target_link_libraries(${PROJECT_NAME} PRIVATE m)
+endif()

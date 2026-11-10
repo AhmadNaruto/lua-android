@@ -1,80 +1,50 @@
 #!/bin/bash
+set -e
 
-NDK="$HOME/Android/Sdk/ndk/25.1.8937393"
+# Support ANDROID_NDK_HOME / ANDROID_NDK_ROOT or fallback to default path
+NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-$HOME/Android/Sdk/ndk/25.1.8937393}}"
 
-mkdir -p build/lib/armeabi-v7a
-
-cd build/lib/armeabi-v7a
-
-echo "Configuring for "armeabi-v7a""
-
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=armeabi-v7a -DCMAKE_C_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang -DCMAKE_CXX_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ ../../../
-
-if [ $? -eq 0 ]; then
-    echo "CMake configuration successful."
-    # Run the build command
-    cmake --build .
-else
-    echo "CMake configuration failed."
-    exit
+if [ ! -d "$NDK" ]; then
+    echo "Error: Android NDK not found at '$NDK'."
+    echo "Please set ANDROID_NDK_HOME or ANDROID_NDK_ROOT to your NDK installation directory."
+    exit 1
 fi
 
-cd ..
+ROOT_DIR="$(pwd)"
+ABIS=("armeabi-v7a" "arm64-v8a" "x86" "x86_64")
 
-mkdir arm64-v8a
+mkdir -p "$ROOT_DIR/dist/jniLibs"
+mkdir -p "$ROOT_DIR/dist/include"
+mkdir -p "$ROOT_DIR/dist/kotlin"
+cp -r "$ROOT_DIR/include/"* "$ROOT_DIR/dist/include/"
+cp -r "$ROOT_DIR/kotlin/"* "$ROOT_DIR/dist/kotlin/"
 
-cd arm64-v8a
+for ABI in "${ABIS[@]}"; do
+    echo "=========================================="
+    echo "Configuring and building for $ABI..."
+    echo "=========================================="
+    BUILD_DIR="$ROOT_DIR/build/lib/$ABI"
+    mkdir -p "$BUILD_DIR"
+    cd "$BUILD_DIR"
 
-echo "Configuring for "arm64-v8a""
+    cmake -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+          -DANDROID_ABI="$ABI" \
+          -DANDROID_PLATFORM=android-21 \
+          "$ROOT_DIR"
 
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DCMAKE_C_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang -DCMAKE_CXX_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ ../../../
+    echo "CMake configuration successful for $ABI."
+    cmake --build . -- -j$(nproc 2>/dev/null || echo 4)
 
-if [ $? -eq 0 ]; then
-    echo "CMake configuration successful."
-    # Run the build command
-    cmake --build .
-else
-    echo "CMake configuration failed."
-    exit
-fi
+    echo "Collecting binary to dist/jniLibs/$ABI/..."
+    mkdir -p "$ROOT_DIR/dist/jniLibs/$ABI"
+    cp "$BUILD_DIR/liblua.so" "$ROOT_DIR/dist/jniLibs/$ABI/"
 
-cd ..
+    cd "$ROOT_DIR"
+done
 
-echo "Configuring for "x86""
-
-mkdir x86
-
-cd x86
-
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=x86 -DCMAKE_C_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang -DCMAKE_CXX_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ ../../../
-
-if [ $? -eq 0 ]; then
-    echo "CMake configuration successful."
-    # Run the build command
-    cmake --build .
-else
-    echo "CMake configuration failed."
-    exit
-fi
-
-
-cd ..
-
-mkdir x86_64
-
-cd x86_64
-
-echo "Configuring for "x86_64""
-
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=x86_64 -DCMAKE_C_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang -DCMAKE_CXX_COMPILER=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ ../../../
-
-if [ $? -eq 0 ]; then
-    echo "CMake configuration successful."
-    # Run the build command
-    cmake --build .
-else
-    echo "CMake configuration failed."
-    exit
-fi
-
-echo "Build for target "armeabi-v7a" "arm64-v8a" "x86" "x86_64""
+echo "=========================================="
+echo "Successfully built for ABIs: ${ABIS[*]}"
+echo "Outputs collected in dist/:"
+echo " - dist/jniLibs/<abi>/liblua.so"
+echo " - dist/include/"
+echo "=========================================="
