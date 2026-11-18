@@ -35,14 +35,15 @@ add_library(${PROJECT_NAME} SHARED
     src/lutf8lib.c
     src/lvm.c
     src/lzio.c
-    src/cJSON.c
-    src/ljsonlib.c
-    src/lregexlib.c
-    src/aes.c
-    src/b64_buffer.c
-    src/b64_encode.c
-    src/b64_decode.c
-    src/lutilib.c
+    # Third-party and built-in extensions (JSON, Regex, Util/Crypto)
+    src/extensions/json/cJSON.c
+    src/extensions/json/ljsonlib.c
+    src/extensions/regex/lregexlib.c
+    src/extensions/util/aes.c
+    src/extensions/util/b64_buffer.c
+    src/extensions/util/b64_encode.c
+    src/extensions/util/b64_decode.c
+    src/extensions/util/lutilib.c
 )
 
 if(ANDROID)
@@ -54,6 +55,9 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/json
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/regex
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/extensions/util
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE

@@ -10,7 +10,11 @@ echo "=========================================="
 
 C_SOURCES=$(find src -name "*.c" ! -name "lua.c" ! -name "luac.c" ! -name "lua_jni.c")
 
-clang -Iinclude -Isrc -DLUA_USE_LINUX \
+clang -Iinclude -Isrc \
+    -Isrc/extensions/json \
+    -Isrc/extensions/regex \
+    -Isrc/extensions/util \
+    -DLUA_USE_LINUX \
     tests/test_runner.c \
     $C_SOURCES \
     -o tests/test_runner -lm
