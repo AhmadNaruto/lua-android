@@ -650,6 +650,18 @@
 
 
 /*
+@@ l_fseek / l_ftell for Android 32-bit (where fseeko/ftello require API 24+)
+*/
+#if defined(__ANDROID__) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 24) && !defined(__LP64__)
+#if !defined(l_fseek)
+#define l_fseek(f,o,w)		fseek(f,(long)(o),w)
+#define l_ftell(f)		ftell(f)
+#define l_seeknum		long
+#endif
+#endif
+
+
+/*
 ** macros to improve jump prediction, used mostly for error handling
 ** and debug facilities. (Some macros in the Lua API use these macros.
 ** Define LUA_NOBUILTIN if you do not want '__builtin_expect' in your
