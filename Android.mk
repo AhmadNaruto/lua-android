@@ -5,7 +5,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := lua
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/src $(LOCAL_PATH)/include $(LOCAL_PATH)/src/extensions/json $(LOCAL_PATH)/src/extensions/regex $(LOCAL_PATH)/src/extensions/util
-LOCAL_CFLAGS    := -D"lua_getlocaledecpoint()='.'" -DLUA_USE_LINUX
+LOCAL_CFLAGS    := -DLUA_USE_LINUX
 
 LOCAL_CPP_EXTENSION := .cpp
 

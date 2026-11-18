@@ -173,7 +173,7 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
 
     // --- Global Variable Access (LuaJ Globals as environment table) ---
 
-    override fun get(key: LuaValue): LuaValue {
+    override operator fun get(key: LuaValue): LuaValue {
         checkState()
         return if (key.isstring()) {
             nativeGetGlobal(statePtr, key.tojstring())
@@ -182,12 +182,12 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
         }
     }
 
-    override fun get(key: String): LuaValue {
+    override operator fun get(key: String): LuaValue {
         checkState()
         return nativeGetGlobal(statePtr, key)
     }
 
-    override fun set(key: LuaValue, value: LuaValue) {
+    override operator fun set(key: LuaValue, value: LuaValue) {
         checkState()
         if (key.isstring()) {
             nativeSetGlobal(statePtr, key.tojstring(), value)
@@ -196,7 +196,7 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
         }
     }
 
-    override fun set(key: String, value: LuaValue) {
+    override operator fun set(key: String, value: LuaValue) {
         checkState()
         nativeSetGlobal(statePtr, key, value)
     }

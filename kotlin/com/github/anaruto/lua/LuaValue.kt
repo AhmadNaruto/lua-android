@@ -176,41 +176,27 @@ abstract class LuaValue : Comparable<LuaValue> {
 
     // --- Table Operations ---
 
-    open fun get(key: LuaValue): LuaValue = NIL
-    open fun get(key: String): LuaValue = get(valueOf(key))
-    open fun get(key: Int): LuaValue = get(valueOf(key))
+    open operator fun get(key: LuaValue): LuaValue = NIL
+    open operator fun get(key: String): LuaValue = get(valueOf(key))
+    open operator fun get(key: Int): LuaValue = get(valueOf(key))
 
-    open fun set(key: LuaValue, value: LuaValue) {
+    open operator fun set(key: LuaValue, value: LuaValue) {
         throw LuaError("attempt to index a " + typename() + " value")
     }
-    open fun set(key: String, value: LuaValue) = set(valueOf(key), value)
-    open fun set(key: Int, value: LuaValue) = set(valueOf(key), value)
+    open operator fun set(key: String, value: LuaValue) = set(valueOf(key), value)
+    open operator fun set(key: Int, value: LuaValue) = set(valueOf(key), value)
 
-    fun set(key: String, value: String?) = set(valueOf(key), valueOf(value))
-    fun set(key: String, value: Double) = set(valueOf(key), valueOf(value))
-    fun set(key: String, value: Long) = set(valueOf(key), valueOf(value))
-    fun set(key: String, value: Int) = set(valueOf(key), valueOf(value))
-    fun set(key: String, value: Boolean) = set(valueOf(key), valueOf(value))
+    operator fun set(key: String, value: String?) = set(valueOf(key), valueOf(value))
+    operator fun set(key: String, value: Double) = set(valueOf(key), valueOf(value))
+    operator fun set(key: String, value: Long) = set(valueOf(key), valueOf(value))
+    operator fun set(key: String, value: Int) = set(valueOf(key), valueOf(value))
+    operator fun set(key: String, value: Boolean) = set(valueOf(key), valueOf(value))
 
-    fun set(key: Int, value: String?) = set(valueOf(key), valueOf(value))
-    fun set(key: Int, value: Double) = set(valueOf(key), valueOf(value))
-    fun set(key: Int, value: Long) = set(valueOf(key), valueOf(value))
-    fun set(key: Int, value: Int) = set(valueOf(key), valueOf(value))
-    fun set(key: Int, value: Boolean) = set(valueOf(key), valueOf(value))
-
-    // Kotlin operator overloading
-    operator fun get(key: String): LuaValue = get(key)
-    operator fun get(key: Int): LuaValue = get(key)
-    operator fun get(key: LuaValue): LuaValue = get(key)
-
-    operator fun set(key: String, value: LuaValue) = set(key, value)
-    operator fun set(key: Int, value: LuaValue) = set(key, value)
-    operator fun set(key: LuaValue, value: LuaValue) = set(key, value)
-    operator fun set(key: String, value: String?) = set(key, value)
-    operator fun set(key: String, value: Double) = set(key, value)
-    operator fun set(key: String, value: Long) = set(key, value)
-    operator fun set(key: String, value: Int) = set(key, value)
-    operator fun set(key: String, value: Boolean) = set(key, value)
+    operator fun set(key: Int, value: String?) = set(valueOf(key), valueOf(value))
+    operator fun set(key: Int, value: Double) = set(valueOf(key), valueOf(value))
+    operator fun set(key: Int, value: Long) = set(valueOf(key), valueOf(value))
+    operator fun set(key: Int, value: Int) = set(valueOf(key), valueOf(value))
+    operator fun set(key: Int, value: Boolean) = set(valueOf(key), valueOf(value))
 
     // --- Function Invocation ---
 
@@ -219,15 +205,11 @@ abstract class LuaValue : Comparable<LuaValue> {
     open fun call(arg1: LuaValue, arg2: LuaValue): LuaValue = invoke(Varargs.of(arg1, arg2)).arg1()
     open fun call(arg1: LuaValue, arg2: LuaValue, arg3: LuaValue): LuaValue = invoke(Varargs.of(arg1, arg2, arg3)).arg1()
 
-    open fun invoke(args: Varargs): Varargs {
+    open operator fun invoke(args: Varargs): Varargs {
         throw LuaError("attempt to call a " + typename() + " value")
     }
 
-    fun invoke(vararg args: LuaValue): Varargs = invoke(Varargs.of(*args))
-
-    operator fun invoke(vararg args: LuaValue): LuaValue {
-        return invoke(Varargs.of(*args)).arg1()
-    }
+    operator fun invoke(vararg args: LuaValue): Varargs = invoke(Varargs.of(*args))
 
     override fun compareTo(other: LuaValue): Int {
         if (this === other) return 0

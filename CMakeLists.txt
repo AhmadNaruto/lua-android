@@ -62,7 +62,6 @@ target_include_directories(${PROJECT_NAME}
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     LUA_USE_LINUX
-    "lua_getlocaledecpoint()='.'"
 )
 
 find_library(LIBDL dl)

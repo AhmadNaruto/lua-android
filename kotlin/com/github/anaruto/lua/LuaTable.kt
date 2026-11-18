@@ -24,7 +24,7 @@ open class LuaTable : LuaValue() {
         return this
     }
 
-    override fun get(key: LuaValue): LuaValue {
+    override operator fun get(key: LuaValue): LuaValue {
         val direct = map[key]
         if (direct != null && !direct.isnil()) {
             return direct
@@ -40,7 +40,7 @@ open class LuaTable : LuaValue() {
         return NIL
     }
 
-    override fun set(key: LuaValue, value: LuaValue) {
+    override operator fun set(key: LuaValue, value: LuaValue) {
         if (value.isnil()) {
             map.remove(key)
         } else {
@@ -83,12 +83,12 @@ class NativeLuaTable internal constructor(
     internal val ref: Int
 ) : LuaTable() {
 
-    override fun get(key: LuaValue): LuaValue {
+    override operator fun get(key: LuaValue): LuaValue {
         if (statePtr == 0L || ref == -1) return NIL
         return Globals.nativeTableGet(statePtr, ref, key)
     }
 
-    override fun set(key: LuaValue, value: LuaValue) {
+    override operator fun set(key: LuaValue, value: LuaValue) {
         if (statePtr == 0L || ref == -1) throw LuaError("Native table is closed or invalid")
         Globals.nativeTableSet(statePtr, ref, key, value)
     }

@@ -13,7 +13,7 @@ class Varargs private constructor(private val values: Array<LuaValue>) : Iterabl
 
         @JvmStatic
         fun of(vararg values: LuaValue): Varargs {
-            return if (values.isEmpty()) EMPTY else Varargs(values.copyOf())
+            return if (values.isEmpty()) EMPTY else Varargs(Array(values.size) { values[it] })
         }
 
         @JvmStatic

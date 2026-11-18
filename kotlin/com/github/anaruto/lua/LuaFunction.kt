@@ -9,7 +9,7 @@ abstract class LuaFunction : LuaValue() {
     override fun isfunction(): Boolean = true
     override fun checkfunction(): LuaFunction = this
 
-    abstract override fun invoke(args: Varargs): Varargs
+    abstract override operator fun invoke(args: Varargs): Varargs
 }
 
 /**
@@ -22,7 +22,7 @@ abstract class VarArgFunction : LuaFunction()
  */
 abstract class ZeroArgFunction : LuaFunction() {
     abstract fun call(): LuaValue
-    override fun invoke(args: Varargs): Varargs = Varargs.of(call())
+    override operator fun invoke(args: Varargs): Varargs = Varargs.of(call())
 }
 
 /**
@@ -30,7 +30,7 @@ abstract class ZeroArgFunction : LuaFunction() {
  */
 abstract class OneArgFunction : LuaFunction() {
     abstract fun call(arg: LuaValue): LuaValue
-    override fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg1()))
+    override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg1()))
 }
 
 /**
@@ -38,7 +38,7 @@ abstract class OneArgFunction : LuaFunction() {
  */
 abstract class TwoArgFunction : LuaFunction() {
     abstract fun call(arg1: LuaValue, arg2: LuaValue): LuaValue
-    override fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2)))
+    override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2)))
 }
 
 /**
@@ -46,7 +46,7 @@ abstract class TwoArgFunction : LuaFunction() {
  */
 abstract class ThreeArgFunction : LuaFunction() {
     abstract fun call(arg1: LuaValue, arg2: LuaValue, arg3: LuaValue): LuaValue
-    override fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2), args.arg(3)))
+    override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2), args.arg(3)))
 }
 
 /**
@@ -59,7 +59,7 @@ class NativeLuaFunction internal constructor(
     internal val ref: Int
 ) : LuaFunction() {
 
-    override fun invoke(args: Varargs): Varargs {
+    override operator fun invoke(args: Varargs): Varargs {
         if (statePtr == 0L || ref == -1) {
             throw LuaError("Attempt to call closed or invalid native Lua function")
         }
@@ -92,7 +92,7 @@ class NativeLuaFunction internal constructor(
  */
 fun Globals.register(name: String, action: (Varargs) -> LuaValue) {
     set(name, object : VarArgFunction() {
-        override fun invoke(args: Varargs): Varargs = Varargs.of(action(args))
+        override operator fun invoke(args: Varargs): Varargs = Varargs.of(action(args))
     })
 }
 
@@ -112,6 +112,6 @@ fun Globals.register(name: String, action: (Varargs) -> LuaValue) {
  */
 fun LuaTable.register(name: String, action: (Varargs) -> LuaValue) {
     set(name, object : VarArgFunction() {
-        override fun invoke(args: Varargs): Varargs = Varargs.of(action(args))
+        override operator fun invoke(args: Varargs): Varargs = Varargs.of(action(args))
     })
 }
