@@ -35,6 +35,12 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Determine Build Mode
         id: mode
         run: |
@@ -86,6 +92,11 @@ jobs:
           chmod +x tests/run_tests.sh
           ./tests/run_tests.sh
 
+      - name: Build Sample Android App (APK)
+        run: |
+          chmod +x gradlew
+          ./gradlew :sample:assembleDebug --stacktrace
+
       - name: Create Distribution Archives
         run: |
           cd dist
@@ -102,6 +113,7 @@ jobs:
             lua-android-5.5.1.zip
             lua-android-5.5.1.tar.gz
             dist/
+            sample/build/outputs/apk/debug/*.apk
           retention-days: 7
 
       - name: Upload Release Artifacts

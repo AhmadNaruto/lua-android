@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1E88E5</color>
+    <color name="primary_dark">#1565C0</color>
+    <color name="accent">#00E676</color>
+    <color name="terminal_bg">#121212</color>
+    <color name="terminal_text">#E0E0E0</color>
+    <color name="pass_green">#4CAF50</color>
+    <color name="fail_red">#F44336</color>
+</resources>

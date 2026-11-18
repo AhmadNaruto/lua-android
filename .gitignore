@@ -6,3 +6,9 @@ tests/test_runner
 *.a
 *.zip
 *.tar.gz
+.gradle/
+.cxx/
+local.properties
+*.apk
+*.aab
+
