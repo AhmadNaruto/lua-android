@@ -22,11 +22,8 @@ permissions:
 
 jobs:
   build:
-    name: Build & Test Android Lua (${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (startsWith(github.ref, 'refs/tags/v') && 'release' || 'test') }})
+    name: Build & Test Android Lua
     runs-on: ubuntu-latest
-
-    env:
-      BUILD_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || (startsWith(github.ref, 'refs/tags/v') && 'release' || 'test') }}
 
     steps:
       - name: Checkout Codebase
@@ -38,12 +35,25 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
-      - name: Log Build Mode Information
+      - name: Determine Build Mode & Release Metadata
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ inputs.mode }}"
+            TAG="v5.5.1-run${{ github.run_number }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            MODE="release"
+            TAG="${{ github.ref_name }}"
+          else
+            MODE="test"
+            TAG=""
+          fi
+          echo "BUILD_MODE=$MODE" >> $GITHUB_ENV
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
           echo "=========================================="
           echo "Triggered by: ${{ github.event_name }}"
           echo "Git Reference: ${{ github.ref }}"
-          echo "Target Build Mode: $BUILD_MODE"
+          echo "Target Build Mode: $MODE"
+          echo "Release Tag: $TAG"
           echo "=========================================="
 
       - name: Build Lua 5.5.1 for Android ABIs
@@ -71,12 +81,12 @@ jobs:
       - name: Create Distribution Archives (.zip and .tar.gz)
         run: |
           cd dist
-          zip -r ../lua-android-5.5.1.zip jniLibs include kotlin
+          zip -r -y ../lua-android-5.5.1.zip jniLibs include kotlin
           tar -czvf ../lua-android-5.5.1.tar.gz jniLibs include kotlin
           cd ..
 
       - name: Upload Artifacts (Mode: test)
-        if: ${{ env.BUILD_MODE == 'test' }}
+        if: env.BUILD_MODE == 'test'
         uses: actions/upload-artifact@v4
         with:
           name: lua-android-test-${{ github.sha }}
@@ -87,7 +97,7 @@ jobs:
           retention-days: 7
 
       - name: Upload Artifacts (Mode: release)
-        if: ${{ env.BUILD_MODE == 'release' }}
+        if: env.BUILD_MODE == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: lua-android-release-${{ github.ref_name }}
@@ -97,11 +107,11 @@ jobs:
           retention-days: 90
 
       - name: Publish GitHub Release (Mode: release)
-        if: ${{ env.BUILD_MODE == 'release' }}
+        if: env.BUILD_MODE == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('Release Lua 5.5.1 (Run {0})', github.run_number) }}
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v5.5.1-run{0}', github.run_number) }}
+          name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ env.RELEASE_TAG }}
           draft: false
           prerelease: false
           generate_release_notes: true

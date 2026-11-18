@@ -16,7 +16,7 @@ ABIS=("armeabi-v7a" "arm64-v8a" "x86" "x86_64")
 mkdir -p "$ROOT_DIR/dist/jniLibs"
 mkdir -p "$ROOT_DIR/dist/include"
 mkdir -p "$ROOT_DIR/dist/kotlin"
-cp -r "$ROOT_DIR/include/"* "$ROOT_DIR/dist/include/"
+find "$ROOT_DIR/include" -maxdepth 1 -type f -exec cp {} "$ROOT_DIR/dist/include/" \;
 cp -r "$ROOT_DIR/kotlin/"* "$ROOT_DIR/dist/kotlin/"
 
 for ABI in "${ABIS[@]}"; do
