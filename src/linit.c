@@ -19,6 +19,7 @@
 #include "lualib.h"
 #include "lauxlib.h"
 #include "llimits.h"
+#include "extensions/html/lhtmllib.h"
 
 
 /*
@@ -69,9 +70,15 @@ LUALIB_API void luaL_openselectedlibs (lua_State *L, int load, int preload) {
   lua_pushcfunction(L, luaopen_util);
   lua_setfield(L, -2, LUA_UTILLIBNAME);
 
+  lua_pushcfunction(L, luaopen_html);
+  lua_setfield(L, -2, LUA_HTMLLIBNAME);
+
+  lua_pushcfunction(L, luaopen_html);
+  lua_setfield(L, -2, "lexbor");
+
   lua_pop(L, 1);  /* remove PRELOAD table */
 
-  /* if loading all/standard libraries, make json, regex, and crypto/util available globally */
+  /* if loading all/standard libraries, make json, regex, crypto/util, html, and lexbor available globally */
   if (load != 0) {
     luaL_requiref(L, LUA_JSONLIBNAME, luaopen_json, 1);
     lua_pop(L, 1);
@@ -89,6 +96,14 @@ LUALIB_API void luaL_openselectedlibs (lua_State *L, int load, int preload) {
     lua_setglobal(L, "url_encode_charset");
     lua_getfield(L, -1, "aes_decrypt");
     lua_setglobal(L, "aes_decrypt");
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_HTMLLIBNAME, luaopen_html, 1);
+    /* also register global table 'lexbor' pointing to the same library */
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, "lexbor");
+    /* export html_parse to global environment */
+    lua_getfield(L, -1, "html_parse");
+    lua_setglobal(L, "html_parse");
     lua_pop(L, 1);
   }
 }
