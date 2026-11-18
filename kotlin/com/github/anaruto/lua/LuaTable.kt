@@ -48,7 +48,7 @@ open class LuaTable : LuaValue() {
         }
     }
 
-    open fun length(): Int {
+    override fun length(): Int {
         var len = 0
         while (get(valueOf(len + 1)) !is LuaNil) {
             len++

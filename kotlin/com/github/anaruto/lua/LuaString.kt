@@ -25,7 +25,7 @@ class LuaString private constructor(private val value: String) : LuaValue() {
 
     override fun checkjstring(): String = value
 
-    fun length(): Int = value.length
+    override fun length(): Int = value.length
 
     override fun equals(other: Any?): Boolean {
         return other is LuaString && other.value == this.value
