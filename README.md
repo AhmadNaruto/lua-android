@@ -236,6 +236,28 @@ print(str)               -- {"status":"ok","code":200}
 
 *Flags yang didukung*: `"i"` (case-insensitive), `"m"` (multiline).
 
+### 3. Crypto & Encoding Utilities (Global tanpa `require`)
+| Fungsi | Deskripsi |
+| :--- | :--- |
+| `base64_encode(str)` | Meng-encode string/bytes ke format Base64 (RFC 4648, standard NO_WRAP). |
+| `base64_decode(b64_str)` | Men-decode string Base64 kembali ke byte string asli. |
+| `url_encode(str [, charset])` | Meng-encode string ke URL format (`application/x-www-form-urlencoded`), default UTF-8. |
+| `aes_decrypt(b64_cipher, key, iv)` | Men-dekripsi data AES/CBC/PKCS5Padding dari format Base64 menggunakan key dan IV. |
+
+```lua
+-- Base64
+local encoded = base64_encode("NoveLA 2026")
+print(encoded)              -- "Tm92ZUxBIDIwMjY="
+print(base64_decode(encoded)) -- "NoveLA 2026"
+
+-- URL Encode
+print(url_encode("judul buku & bab 1")) -- "judul+buku+%26+bab+1"
+
+-- AES Decrypt (kompatibel penuh dengan enkripsi API web novel)
+local plaintext = aes_decrypt(encrypted_b64, "16bytessecretkey", "16bytesinitvecto")
+print(plaintext)
+```
+
 ---
 
 ## 🔨 Build Lokal (NDK)
