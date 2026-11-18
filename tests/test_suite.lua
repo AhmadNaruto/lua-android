@@ -79,26 +79,49 @@ assert_eq(parts[1], "apel", "regex.split item 1")
 assert_eq(parts[2], "jeruk", "regex.split item 2")
 assert_eq(parts[3], "mangga", "regex.split item 3")
 
--- 4. Built-in Crypto & Encoding Utilities (if registered)
-print("\n[4] Built-in Crypto & Encoding Utilities")
-if type(base64_encode) == "function" then
-    local b64 = base64_encode("Hello World")
-    assert_eq(b64, "SGVsbG8gV29ybGQ=", "base64_encode('Hello World')")
-    if type(base64_decode) == "function" then
-        local raw = base64_decode(b64)
-        assert_eq(raw, "Hello World", "base64_decode roundtrip")
-    end
-else
-    print("  - SKIP: base64_encode (requires Android JNI bridge context)")
-end
+-- 4. Built-in C Native Crypto & Encoding Utilities (100% Native C, No JNI bridge)
+print("\n[4] Built-in C Native Crypto & Encoding Utilities")
+assert_true(type(base64_encode) == "function", "Global 'base64_encode' is registered without require")
+assert_true(type(base64_decode) == "function", "Global 'base64_decode' is registered without require")
+assert_true(type(url_encode) == "function", "Global 'url_encode' is registered without require")
+assert_true(type(url_encode_charset) == "function", "Global 'url_encode_charset' is registered without require")
+assert_true(type(aes_decrypt) == "function", "Global 'aes_decrypt' is registered without require")
 
-if type(url_encode) == "function" then
-    local encoded = url_encode("hello world & kawan")
-    assert_true(string.find(encoded, "hello") ~= nil, "url_encode contains keyword")
-    assert_true(string.find(encoded, " ") == nil, "url_encode escaped space")
-else
-    print("  - SKIP: url_encode (requires Android JNI bridge context)")
-end
+-- 4.1 Base64 Tests
+local b64_1 = base64_encode("Hello World")
+assert_eq(b64_1, "SGVsbG8gV29ybGQ=", "base64_encode('Hello World') matches standard RFC 4648")
+local dec_1 = base64_decode(b64_1)
+assert_eq(dec_1, "Hello World", "base64_decode roundtrip matches original text")
+
+local b64_2 = base64_encode("NoveLA")
+assert_eq(b64_2, "Tm92ZUxB", "base64_encode('NoveLA')")
+assert_eq(base64_decode("Tm92ZUxB"), "NoveLA", "base64_decode('Tm92ZUxB')")
+
+-- 4.2 URL Encode Tests
+local url_raw = "hello world & kawan"
+local url_enc = url_encode(url_raw)
+assert_eq(url_enc, "hello+world+%26+kawan", "url_encode spaces and special characters RFC 3986")
+assert_eq(url_encode_charset("foo bar", "UTF-8"), "foo+bar", "url_encode_charset accepts charset param")
+
+-- 4.3 AES-128-CBC Decrypt Tests
+local key1 = "1234567890123456"
+local iv1  = "abcdefghijklmnop"
+local cipher1 = "G/C9PfrDE5jrYKaB0iNQDlxlKwhlMhK+OhLdoV1VxnI="
+local plain1 = aes_decrypt(cipher1, key1, iv1)
+assert_eq(plain1, "NoveLA-Secret-2026", "aes_decrypt vector 1 ('NoveLA-Secret-2026') with PKCS#7 unpadding")
+
+local key2 = "my_secret_key_16"
+local iv2  = "my_iv_param_1234"
+local cipher2 = "p5il/RYSxc2cs0+Uj9o8ZA=="
+local plain2 = aes_decrypt(cipher2, key2, iv2)
+assert_eq(plain2, "hello", "aes_decrypt vector 2 ('hello') with PKCS#7 unpadding")
+
+-- Error handling checks
+local ok_invalid_key = pcall(function() aes_decrypt(cipher1, "short_key", iv1) end)
+assert_eq(ok_invalid_key, false, "aes_decrypt rejects invalid key size")
+
+local ok_invalid_iv = pcall(function() aes_decrypt(cipher1, key1, "short_iv") end)
+assert_eq(ok_invalid_iv, false, "aes_decrypt rejects invalid IV size")
 
 -- 5. Shosetsu / NoveLA String Callable Idiom
 print("\n[5] Shosetsu / NoveLA OOP String Metatable")

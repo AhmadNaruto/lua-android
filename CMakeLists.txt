@@ -38,6 +38,11 @@ add_library(${PROJECT_NAME} SHARED
     src/cJSON.c
     src/ljsonlib.c
     src/lregexlib.c
+    src/aes.c
+    src/b64_buffer.c
+    src/b64_encode.c
+    src/b64_decode.c
+    src/lutilib.c
 )
 
 if(ANDROID)

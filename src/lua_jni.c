@@ -28,12 +28,6 @@ static jclass g_class_NativeLuaFunction = NULL;
 static jclass g_class_LuaUserdata = NULL;
 static jclass g_class_Varargs = NULL;
 static jclass g_class_LuaError = NULL;
-static jclass g_class_NativeCrypto = NULL;
-
-static jmethodID g_mid_NativeCrypto_base64Encode = NULL;
-static jmethodID g_mid_NativeCrypto_base64Decode = NULL;
-static jmethodID g_mid_NativeCrypto_urlEncode = NULL;
-static jmethodID g_mid_NativeCrypto_aesDecrypt = NULL;
 
 static jmethodID g_mid_LuaUserdata_init = NULL;
 static jfieldID g_fid_LuaUserdata_m_instance = NULL;
@@ -301,12 +295,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         (*env)->DeleteLocalRef(env, local_LuaError);
     }
 
-    jclass local_NativeCrypto = (*env)->FindClass(env, "com/github/anaruto/lua/NativeCrypto");
-    if (local_NativeCrypto != NULL) {
-        g_class_NativeCrypto = (jclass)(*env)->NewGlobalRef(env, local_NativeCrypto);
-        (*env)->DeleteLocalRef(env, local_NativeCrypto);
-    }
-
     // Cache field IDs
     g_fid_NIL = (*env)->GetStaticFieldID(env, g_class_LuaValue, "NIL", "Lcom/github/anaruto/lua/LuaNil;");
     g_fid_TRUE = (*env)->GetStaticFieldID(env, g_class_LuaValue, "TRUE", "Lcom/github/anaruto/lua/LuaBoolean;");
@@ -355,13 +343,6 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_mid_Varargs_toArray = (*env)->GetMethodID(env, g_class_Varargs, "toArray", "()[Lcom/github/anaruto/lua/LuaValue;");
     }
 
-    if (g_class_NativeCrypto != NULL) {
-        g_mid_NativeCrypto_base64Encode = (*env)->GetStaticMethodID(env, g_class_NativeCrypto, "base64Encode", "([B)Ljava/lang/String;");
-        g_mid_NativeCrypto_base64Decode = (*env)->GetStaticMethodID(env, g_class_NativeCrypto, "base64Decode", "(Ljava/lang/String;)[B");
-        g_mid_NativeCrypto_urlEncode = (*env)->GetStaticMethodID(env, g_class_NativeCrypto, "urlEncode", "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;");
-        g_mid_NativeCrypto_aesDecrypt = (*env)->GetStaticMethodID(env, g_class_NativeCrypto, "aesDecrypt", "(Ljava/lang/String;[B[B)[B");
-    }
-
     return JNI_VERSION_1_6;
 }
 
@@ -385,7 +366,6 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
     if (g_class_LuaUserdata) (*env)->DeleteGlobalRef(env, g_class_LuaUserdata);
     if (g_class_Varargs) (*env)->DeleteGlobalRef(env, g_class_Varargs);
     if (g_class_LuaError) (*env)->DeleteGlobalRef(env, g_class_LuaError);
-    if (g_class_NativeCrypto) (*env)->DeleteGlobalRef(env, g_class_NativeCrypto);
 }
 
 // Convert a Lua stack value to a polymorphic jobject (LuaValue)
@@ -523,140 +503,6 @@ static void push_lua_value(JNIEnv *env, lua_State *L, jobject jval) {
 // Globals native bindings (LuaJ architecture)
 // =========================================================================
 
-// =========================================================================
-// Built-in Crypto & URL utilities (base64_encode, base64_decode, aes_decrypt, url_encode)
-// =========================================================================
-
-static int l_base64_encode(lua_State *L) {
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
-    int should_detach = 0;
-    JNIEnv *env = get_jni_env(&should_detach);
-    if (env == NULL || g_class_NativeCrypto == NULL || g_mid_NativeCrypto_base64Encode == NULL) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    jbyteArray jbytes = (*env)->NewByteArray(env, (jsize)len);
-    (*env)->SetByteArrayRegion(env, jbytes, 0, (jsize)len, (const jbyte *)str);
-
-    jstring jres = (jstring)(*env)->CallStaticObjectMethod(env, g_class_NativeCrypto, g_mid_NativeCrypto_base64Encode, jbytes);
-    (*env)->DeleteLocalRef(env, jbytes);
-
-    if (jres != NULL) {
-        const char *res_str = (*env)->GetStringUTFChars(env, jres, NULL);
-        lua_pushstring(L, res_str ? res_str : "");
-        (*env)->ReleaseStringUTFChars(env, jres, res_str);
-        (*env)->DeleteLocalRef(env, jres);
-    } else {
-        lua_pushnil(L);
-    }
-
-    if (should_detach && g_vm != NULL) (*g_vm)->DetachCurrentThread(g_vm);
-    return 1;
-}
-
-static int l_base64_decode(lua_State *L) {
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
-    int should_detach = 0;
-    JNIEnv *env = get_jni_env(&should_detach);
-    if (env == NULL || g_class_NativeCrypto == NULL || g_mid_NativeCrypto_base64Decode == NULL) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    jstring jstr = (*env)->NewStringUTF(env, str);
-    jbyteArray jbytes = (jbyteArray)(*env)->CallStaticObjectMethod(env, g_class_NativeCrypto, g_mid_NativeCrypto_base64Decode, jstr);
-    (*env)->DeleteLocalRef(env, jstr);
-
-    if (jbytes != NULL) {
-        jsize res_len = (*env)->GetArrayLength(env, jbytes);
-        jbyte *bytes = (*env)->GetByteArrayElements(env, jbytes, NULL);
-        lua_pushlstring(L, (const char *)bytes, (size_t)res_len);
-        (*env)->ReleaseByteArrayElements(env, jbytes, bytes, JNI_ABORT);
-        (*env)->DeleteLocalRef(env, jbytes);
-    } else {
-        lua_pushnil(L);
-    }
-
-    if (should_detach && g_vm != NULL) (*g_vm)->DetachCurrentThread(g_vm);
-    return 1;
-}
-
-static int l_url_encode(lua_State *L) {
-    size_t len = 0;
-    const char *str = luaL_checklstring(L, 1, &len);
-    const char *charset = luaL_optstring(L, 2, "UTF-8");
-
-    int should_detach = 0;
-    JNIEnv *env = get_jni_env(&should_detach);
-    if (env == NULL || g_class_NativeCrypto == NULL || g_mid_NativeCrypto_urlEncode == NULL) {
-        lua_pushvalue(L, 1);
-        return 1;
-    }
-
-    jstring jstr = (*env)->NewStringUTF(env, str);
-    jstring jcharset = (*env)->NewStringUTF(env, charset);
-    jstring jres = (jstring)(*env)->CallStaticObjectMethod(env, g_class_NativeCrypto, g_mid_NativeCrypto_urlEncode, jstr, jcharset);
-    (*env)->DeleteLocalRef(env, jstr);
-    (*env)->DeleteLocalRef(env, jcharset);
-
-    if (jres != NULL) {
-        const char *res_str = (*env)->GetStringUTFChars(env, jres, NULL);
-        lua_pushstring(L, res_str ? res_str : "");
-        (*env)->ReleaseStringUTFChars(env, jres, res_str);
-        (*env)->DeleteLocalRef(env, jres);
-    } else {
-        lua_pushvalue(L, 1);
-    }
-
-    if (should_detach && g_vm != NULL) (*g_vm)->DetachCurrentThread(g_vm);
-    return 1;
-}
-
-static int l_aes_decrypt(lua_State *L) {
-    size_t cipher_len = 0, key_len = 0, iv_len = 0;
-    const char *cipher_b64 = luaL_checklstring(L, 1, &cipher_len);
-    const char *key_str = luaL_checklstring(L, 2, &key_len);
-    const char *iv_str = luaL_checklstring(L, 3, &iv_len);
-
-    int should_detach = 0;
-    JNIEnv *env = get_jni_env(&should_detach);
-    if (env == NULL || g_class_NativeCrypto == NULL || g_mid_NativeCrypto_aesDecrypt == NULL) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    jstring jcipher = (*env)->NewStringUTF(env, cipher_b64);
-    jbyteArray jkey = (*env)->NewByteArray(env, (jsize)key_len);
-    (*env)->SetByteArrayRegion(env, jkey, 0, (jsize)key_len, (const jbyte *)key_str);
-
-    jbyteArray jiv = (*env)->NewByteArray(env, (jsize)iv_len);
-    (*env)->SetByteArrayRegion(env, jiv, 0, (jsize)iv_len, (const jbyte *)iv_str);
-
-    jbyteArray jres = (jbyteArray)(*env)->CallStaticObjectMethod(
-        env, g_class_NativeCrypto, g_mid_NativeCrypto_aesDecrypt, jcipher, jkey, jiv
-    );
-
-    (*env)->DeleteLocalRef(env, jcipher);
-    (*env)->DeleteLocalRef(env, jkey);
-    (*env)->DeleteLocalRef(env, jiv);
-
-    if (jres != NULL) {
-        jsize res_len = (*env)->GetArrayLength(env, jres);
-        jbyte *bytes = (*env)->GetByteArrayElements(env, jres, NULL);
-        lua_pushlstring(L, (const char *)bytes, (size_t)res_len);
-        (*env)->ReleaseByteArrayElements(env, jres, bytes, JNI_ABORT);
-        (*env)->DeleteLocalRef(env, jres);
-    } else {
-        lua_pushnil(L);
-    }
-
-    if (should_detach && g_vm != NULL) (*g_vm)->DetachCurrentThread(g_vm);
-    return 1;
-}
-
 static int string_call_self(lua_State *L) {
     lua_pushvalue(L, 1);
     return 1;
@@ -672,12 +518,15 @@ Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
         // Hook print to Android Logcat
         lua_register(L, "print", android_lua_print);
 
-        // Register built-in crypto & encoding functions directly into global scope
-        lua_register(L, "base64_encode", l_base64_encode);
-        lua_register(L, "base64_decode", l_base64_decode);
-        lua_register(L, "url_encode", l_url_encode);
-        lua_register(L, "url_encode_charset", l_url_encode);
-        lua_register(L, "aes_decrypt", l_aes_decrypt);
+        // Support Shosetsu/NoveLA OOP string getter idiom: ("text"):text() or el:text()
+        lua_pushliteral(L, "");
+        if (lua_getmetatable(L, -1)) {
+            lua_pushcfunction(L, string_call_self);
+            lua_setfield(L, -2, "__call");
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
 
         // Support Shosetsu/NoveLA OOP string getter idiom: ("text"):text() or el:text()
         lua_pushliteral(L, "");

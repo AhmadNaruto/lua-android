@@ -60,6 +60,9 @@ LUAMOD_API int (luaopen_json) (lua_State *L);
 #define LUA_REGEXLIBNAME "regex"
 LUAMOD_API int (luaopen_regex) (lua_State *L);
 
+#define LUA_UTILLIBNAME "util"
+LUAMOD_API int (luaopen_util) (lua_State *L);
+
 
 /* open selected libraries */
 LUALIB_API void (luaL_openselectedlibs) (lua_State *L, int load, int preload);

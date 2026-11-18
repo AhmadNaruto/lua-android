@@ -66,13 +66,29 @@ LUALIB_API void luaL_openselectedlibs (lua_State *L, int load, int preload) {
   lua_pushcfunction(L, luaopen_regex);
   lua_setfield(L, -2, LUA_REGEXLIBNAME);
 
+  lua_pushcfunction(L, luaopen_util);
+  lua_setfield(L, -2, LUA_UTILLIBNAME);
+
   lua_pop(L, 1);  /* remove PRELOAD table */
 
-  /* if loading all/standard libraries, make json and regex available globally */
+  /* if loading all/standard libraries, make json, regex, and crypto/util available globally */
   if (load != 0) {
     luaL_requiref(L, LUA_JSONLIBNAME, luaopen_json, 1);
     lua_pop(L, 1);
     luaL_requiref(L, LUA_REGEXLIBNAME, luaopen_regex, 1);
+    lua_pop(L, 1);
+    luaL_requiref(L, LUA_UTILLIBNAME, luaopen_util, 1);
+    /* export base64_encode, base64_decode, url_encode, aes_decrypt to global environment */
+    lua_getfield(L, -1, "base64_encode");
+    lua_setglobal(L, "base64_encode");
+    lua_getfield(L, -1, "base64_decode");
+    lua_setglobal(L, "base64_decode");
+    lua_getfield(L, -1, "url_encode");
+    lua_setglobal(L, "url_encode");
+    lua_getfield(L, -1, "url_encode_charset");
+    lua_setglobal(L, "url_encode_charset");
+    lua_getfield(L, -1, "aes_decrypt");
+    lua_setglobal(L, "aes_decrypt");
     lua_pop(L, 1);
   }
 }
