@@ -48,11 +48,11 @@ open class LuaTable : LuaValue() {
         }
     }
 
-    open fun rawget(key: LuaValue): LuaValue = map[key] ?: NIL
-    open fun rawget(key: String): LuaValue = rawget(valueOf(key))
-    open fun rawget(key: Int): LuaValue = rawget(valueOf(key))
+    override fun rawget(key: LuaValue): LuaValue = map[key] ?: NIL
+    override fun rawget(key: String): LuaValue = rawget(valueOf(key))
+    override fun rawget(key: Int): LuaValue = rawget(valueOf(key))
 
-    open fun rawset(key: LuaValue, value: LuaValue): LuaTable {
+    override fun rawset(key: LuaValue, value: LuaValue): LuaTable {
         if (value.isnil()) {
             map.remove(key)
         } else {
@@ -60,8 +60,8 @@ open class LuaTable : LuaValue() {
         }
         return this
     }
-    open fun rawset(key: String, value: LuaValue): LuaTable = rawset(valueOf(key), value)
-    open fun rawset(key: Int, value: LuaValue): LuaTable = rawset(valueOf(key), value)
+    override fun rawset(key: String, value: LuaValue): LuaTable = rawset(valueOf(key), value)
+    override fun rawset(key: Int, value: LuaValue): LuaTable = rawset(valueOf(key), value)
 
     override fun length(): Int {
         var len = 0

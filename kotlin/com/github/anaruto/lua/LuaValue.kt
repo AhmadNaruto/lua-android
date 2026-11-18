@@ -183,9 +183,12 @@ abstract class LuaValue : Comparable<LuaValue> {
     open fun rawget(key: String): LuaValue = get(key)
     open fun rawget(key: Int): LuaValue = get(key)
 
-    open fun rawset(key: LuaValue, value: LuaValue) = set(key, value)
-    open fun rawset(key: String, value: LuaValue) = set(key, value)
-    open fun rawset(key: Int, value: LuaValue) = set(key, value)
+    open fun rawset(key: LuaValue, value: LuaValue): LuaValue {
+        set(key, value)
+        return this
+    }
+    open fun rawset(key: String, value: LuaValue): LuaValue = rawset(valueOf(key), value)
+    open fun rawset(key: Int, value: LuaValue): LuaValue = rawset(valueOf(key), value)
 
     open operator fun get(key: LuaValue): LuaValue = NIL
     open operator fun get(key: String): LuaValue = get(valueOf(key))
