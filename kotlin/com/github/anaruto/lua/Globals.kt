@@ -128,45 +128,45 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
      * @param chunkname Identifying name for error reporting (default: "chunk").
      * @return [LuaFunction] chunk ready to be called via `.call()` or `.invoke()`.
      */
-    fun load(script: String, chunkname: String = "chunk"): LuaFunction {
+    fun load(script: String, chunkname: String = "chunk"): LuaFunction = synchronized(this) {
         checkState()
         val ref = nativeLoad(statePtr, script, chunkname)
         if (ref == -1) {
             throw LuaError("Failed to compile script chunk: $chunkname")
         }
-        return NativeLuaFunction(statePtr, ref)
+        NativeLuaFunction(statePtr, ref)
     }
 
     /**
      * Compiles a Lua script file from the given path into an executable [LuaFunction].
      */
-    fun loadfile(filePath: String): LuaFunction {
+    fun loadfile(filePath: String): LuaFunction = synchronized(this) {
         checkState()
         val ref = nativeLoadFile(statePtr, filePath)
         if (ref == -1) {
             throw LuaError("Failed to load script file: $filePath")
         }
-        return NativeLuaFunction(statePtr, ref)
+        NativeLuaFunction(statePtr, ref)
     }
 
     /**
      * Executes the script chunk immediately and returns all return values as [Varargs].
      */
-    fun doString(script: String): Varargs {
+    fun doString(script: String): Varargs = synchronized(this) {
         checkState()
         val results = nativeDoString(statePtr, script)
             ?: throw LuaError("Failed to execute Lua script")
-        return Varargs.of(*results)
+        Varargs.of(*results)
     }
 
     /**
      * Executes the script file immediately and returns all return values as [Varargs].
      */
-    fun doFile(filePath: String): Varargs {
+    fun doFile(filePath: String): Varargs = synchronized(this) {
         checkState()
         val results = nativeDoFile(statePtr, filePath)
             ?: throw LuaError("Failed to execute Lua script file: $filePath")
-        return Varargs.of(*results)
+        Varargs.of(*results)
     }
 
     /**
@@ -180,29 +180,29 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
     /**
      * Creates a new native Lua table inside the Lua state.
      */
-    fun newTable(): LuaTable {
+    fun newTable(): LuaTable = synchronized(this) {
         checkState()
         val ref = nativeNewTable(statePtr)
-        return NativeLuaTable(statePtr, ref)
+        NativeLuaTable(statePtr, ref)
     }
 
     // --- Global Variable Access (LuaJ Globals as environment table) ---
 
-    override operator fun get(key: LuaValue): LuaValue {
+    override operator fun get(key: LuaValue): LuaValue = synchronized(this) {
         checkState()
-        return if (key.isstring()) {
+        if (key.isstring()) {
             nativeGetGlobal(statePtr, key.tojstring())
         } else {
             NIL
         }
     }
 
-    override operator fun get(key: String): LuaValue {
+    override operator fun get(key: String): LuaValue = synchronized(this) {
         checkState()
-        return nativeGetGlobal(statePtr, key)
+        nativeGetGlobal(statePtr, key)
     }
 
-    override operator fun set(key: LuaValue, value: LuaValue) {
+    override operator fun set(key: LuaValue, value: LuaValue) = synchronized(this) {
         checkState()
         if (key.isstring()) {
             nativeSetGlobal(statePtr, key.tojstring(), value)
@@ -211,12 +211,12 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
         }
     }
 
-    override operator fun set(key: String, value: LuaValue) {
+    override operator fun set(key: String, value: LuaValue) = synchronized(this) {
         checkState()
         nativeSetGlobal(statePtr, key, value)
     }
 
-    override fun close() {
+    override fun close() = synchronized(this) {
         if (statePtr != 0L) {
             nativeClose(statePtr)
             statePtr = 0L
@@ -240,27 +240,27 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
     /**
      * Loads a pre-compiled binary bytecode chunk or Lua source script directly from a [ByteArray].
      */
-    fun load(bytes: ByteArray, chunkname: String = "chunk"): LuaFunction {
+    fun load(bytes: ByteArray, chunkname: String = "chunk"): LuaFunction = synchronized(this) {
         checkState()
         val str = String(bytes, Charsets.ISO_8859_1)
         val ref = nativeLoad(statePtr, str, chunkname)
         if (ref == -1) {
             throw LuaError("Failed to compile script chunk: $chunkname")
         }
-        return NativeLuaFunction(statePtr, ref)
+        NativeLuaFunction(statePtr, ref)
     }
 
     /**
      * Dumps an executable [LuaFunction] into native Lua 5.5 binary bytecode.
      */
-    fun dump(function: LuaFunction): ByteArray {
+    fun dump(function: LuaFunction): ByteArray = synchronized(this) {
         val stringLib = get("string")
         val dumpFn = stringLib.get("dump")
         if (!dumpFn.isfunction()) {
             throw LuaError("string.dump is not available")
         }
         val byteStr = dumpFn.call(function).tojstring()
-        return byteStr.toByteArray(Charsets.ISO_8859_1)
+        byteStr.toByteArray(Charsets.ISO_8859_1)
     }
 
     /**

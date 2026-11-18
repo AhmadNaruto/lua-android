@@ -19,14 +19,77 @@
 #define HTML_DOCUMENT_MT "html.document"
 #define HTML_ELEMENT_MT  "html.element"
 #define HTML_ELEMENTS_MT "html.elements"
+#define HTML_ENGINE_REG_KEY "html.lexbor.engine"
 
 typedef struct {
     lxb_html_document_t *doc;
+    char *base_uri;
 } LuaHtmlDocument;
 
 typedef struct {
     lxb_dom_node_t *node;
 } LuaHtmlElement;
+
+/* Selector engine cache structure */
+typedef struct {
+    lxb_css_parser_t *css_parser;
+    lxb_selectors_t *selectors;
+} LuaHtmlSelectorEngine;
+
+/* Clean up selector engine on lua_close */
+static int engine_gc(lua_State *L) {
+    LuaHtmlSelectorEngine *eng = (LuaHtmlSelectorEngine *)lua_touserdata(L, 1);
+    if (eng->selectors != NULL) {
+        lxb_selectors_destroy(eng->selectors, true);
+        eng->selectors = NULL;
+    }
+    if (eng->css_parser != NULL) {
+        lxb_css_parser_destroy(eng->css_parser, true);
+        eng->css_parser = NULL;
+    }
+    return 0;
+}
+
+/* Retrieve or create cached selector engine per Lua State */
+static LuaHtmlSelectorEngine *get_or_create_engine(lua_State *L) {
+    lua_getfield(L, LUA_REGISTRYINDEX, HTML_ENGINE_REG_KEY);
+    if (!lua_isnil(L, -1)) {
+        LuaHtmlSelectorEngine *eng = (LuaHtmlSelectorEngine *)lua_touserdata(L, -1);
+        lua_pop(L, 1);
+        return eng;
+    }
+    lua_pop(L, 1);
+
+    LuaHtmlSelectorEngine *eng = (LuaHtmlSelectorEngine *)lua_newuserdatauv(L, sizeof(LuaHtmlSelectorEngine), 0);
+    eng->css_parser = lxb_css_parser_create();
+    lxb_status_t status = lxb_css_parser_init(eng->css_parser, NULL);
+    if (status != LXB_STATUS_OK) {
+        lxb_css_parser_destroy(eng->css_parser, true);
+        eng->css_parser = NULL;
+        eng->selectors = NULL;
+        return NULL;
+    }
+
+    eng->selectors = lxb_selectors_create();
+    status = lxb_selectors_init(eng->selectors);
+    if (status != LXB_STATUS_OK) {
+        lxb_selectors_destroy(eng->selectors, true);
+        lxb_css_parser_destroy(eng->css_parser, true);
+        eng->selectors = NULL;
+        eng->css_parser = NULL;
+        return NULL;
+    }
+
+    lua_newtable(L);
+    lua_pushcfunction(L, engine_gc);
+    lua_setfield(L, -2, "__gc");
+    lua_setmetatable(L, -2);
+
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, HTML_ENGINE_REG_KEY);
+    lua_pop(L, 1);
+    return eng;
+}
 
 /* Helper: extract LuaHtmlDocument or owner from stack */
 static void push_owner_doc(lua_State *L, int idx) {
@@ -36,6 +99,52 @@ static void push_owner_doc(lua_State *L, int idx) {
         lua_getiuservalue(L, idx, 1);
     } else {
         lua_pushnil(L);
+    }
+}
+
+/* Helper: resolve relative URL against base URI */
+static void resolve_absolute_url(luaL_Buffer *b, const char *base, const char *rel, size_t rel_len) {
+    if (!rel || rel_len == 0) return;
+    if (strncmp(rel, "http://", 7) == 0 || strncmp(rel, "https://", 8) == 0 || strncmp(rel, "data:", 5) == 0) {
+        luaL_addlstring(b, rel, rel_len);
+        return;
+    }
+    if (strncmp(rel, "//", 2) == 0) {
+        luaL_addstring(b, "https:");
+        luaL_addlstring(b, rel, rel_len);
+        return;
+    }
+    if (!base || base[0] == '\0') {
+        luaL_addlstring(b, rel, rel_len);
+        return;
+    }
+
+    if (rel[0] == '/') {
+        const char *scheme_end = strstr(base, "://");
+        if (scheme_end != NULL) {
+            const char *slash = strchr(scheme_end + 3, '/');
+            if (slash != NULL) {
+                luaL_addlstring(b, base, slash - base);
+            } else {
+                luaL_addstring(b, base);
+            }
+        } else {
+            luaL_addstring(b, base);
+        }
+        luaL_addlstring(b, rel, rel_len);
+    } else {
+        size_t blen = strlen(base);
+        const char *last_slash = strrchr(base, '/');
+        const char *scheme_end = strstr(base, "://");
+        if (last_slash != NULL && (scheme_end == NULL || last_slash > scheme_end + 2)) {
+            luaL_addlstring(b, base, last_slash - base + 1);
+        } else {
+            luaL_addstring(b, base);
+            if (blen > 0 && base[blen - 1] != '/') {
+                luaL_addchar(b, '/');
+            }
+        }
+        luaL_addlstring(b, rel, rel_len);
     }
 }
 
@@ -127,7 +236,6 @@ static int run_css_selector(lua_State *L, lxb_dom_node_t *root_node, int owner_i
     if (status != LXB_STATUS_OK) {
         lxb_selectors_destroy(selectors, true);
         lxb_css_parser_destroy(css_parser, true);
-        lxb_css_selector_list_destroy_memory(list);
         return luaL_error(L, "html: failed to initialize selectors engine");
     }
 
@@ -146,11 +254,10 @@ static int run_css_selector(lua_State *L, lxb_dom_node_t *root_node, int owner_i
         sctx.table_idx = 0;
     }
 
-    status = lxb_selectors_find(selectors, root_node, list, select_find_cb, &sctx);
+    (void)lxb_selectors_find(selectors, root_node, list, select_find_cb, &sctx);
 
     lxb_selectors_destroy(selectors, true);
     lxb_css_parser_destroy(css_parser, true);
-    lxb_css_selector_list_destroy_memory(list);
 
     if (first_only) {
         if (sctx.found_node != NULL) {
@@ -175,6 +282,10 @@ static int doc_gc(lua_State *L) {
     if (doc->doc != NULL) {
         lxb_html_document_destroy(doc->doc);
         doc->doc = NULL;
+    }
+    if (doc->base_uri != NULL) {
+        free(doc->base_uri);
+        doc->base_uri = NULL;
     }
     return 0;
 }
@@ -261,17 +372,41 @@ static int doc_text(lua_State *L) {
     return 1;
 }
 
+static int doc_set_base_uri(lua_State *L) {
+    LuaHtmlDocument *doc = check_document(L, 1);
+    const char *uri = luaL_checkstring(L, 2);
+    if (doc->base_uri != NULL) {
+        free(doc->base_uri);
+    }
+    doc->base_uri = strdup(uri);
+    lua_pushvalue(L, 1);
+    return 1;
+}
+
+static int doc_base_uri(lua_State *L) {
+    LuaHtmlDocument *doc = check_document(L, 1);
+    if (doc->base_uri != NULL) {
+        lua_pushstring(L, doc->base_uri);
+    } else {
+        lua_pushliteral(L, "");
+    }
+    return 1;
+}
+
 static const luaL_Reg doc_methods[] = {
     {"select", doc_select},
     {"selectFirst", doc_select_first},
     {"select_first", doc_select_first},
+    {"setBaseUri", doc_set_base_uri},
+    {"set_base_uri", doc_set_base_uri},
+    {"baseUri", doc_base_uri},
+    {"base_uri", doc_base_uri},
     {"root", doc_root},
     {NULL, NULL}
 };
 
 static int doc_index(lua_State *L) {
     const char *key = luaL_checkstring(L, 2);
-    /* Check method table */
     lua_getmetatable(L, 1);
     lua_getfield(L, -1, key);
     if (!lua_isnil(L, -1)) {
@@ -279,7 +414,6 @@ static int doc_index(lua_State *L) {
     }
     lua_pop(L, 2);
 
-    /* Property / callable-string access */
     if (strcmp(key, "title") == 0) {
         return doc_title(L);
     } else if (strcmp(key, "body") == 0) {
@@ -290,6 +424,8 @@ static int doc_index(lua_State *L) {
         return doc_html(L);
     } else if (strcmp(key, "text") == 0) {
         return doc_text(L);
+    } else if (strcmp(key, "baseUri") == 0 || strcmp(key, "base_uri") == 0) {
+        return doc_base_uri(L);
     }
     lua_pushnil(L);
     return 1;
@@ -326,13 +462,41 @@ static int el_attr(lua_State *L) {
         return 1;
     }
     lxb_dom_element_t *element = lxb_dom_interface_element(el->node);
-    size_t val_len = 0;
-    const lxb_char_t *val = lxb_dom_element_get_attribute(element, (const lxb_char_t *)name, name_len, &val_len);
-    if (val != NULL) {
-        lua_pushlstring(L, (const char *)val, val_len);
-    } else {
-        lua_pushliteral(L, "");
+
+    bool resolve_abs = false;
+    const char *actual_name = name;
+    size_t actual_name_len = name_len;
+
+    if (strncmp(name, "abs:", 4) == 0) {
+        resolve_abs = true;
+        actual_name = name + 4;
+        actual_name_len = name_len - 4;
     }
+
+    size_t val_len = 0;
+    const lxb_char_t *val = lxb_dom_element_get_attribute(element, (const lxb_char_t *)actual_name, actual_name_len, &val_len);
+    if (val == NULL) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
+
+    if (resolve_abs) {
+        const char *base = NULL;
+        push_owner_doc(L, 1);
+        if (luaL_testudata(L, -1, HTML_DOCUMENT_MT)) {
+            LuaHtmlDocument *doc = (LuaHtmlDocument *)lua_touserdata(L, -1);
+            base = doc->base_uri;
+        }
+        lua_pop(L, 1);
+
+        luaL_Buffer b;
+        luaL_buffinit(L, &b);
+        resolve_absolute_url(&b, base, (const char *)val, val_len);
+        luaL_pushresult(&b);
+        return 1;
+    }
+
+    lua_pushlstring(L, (const char *)val, val_len);
     return 1;
 }
 
@@ -345,6 +509,10 @@ static int el_has_attr(lua_State *L) {
         return 1;
     }
     lxb_dom_element_t *element = lxb_dom_interface_element(el->node);
+    if (strncmp(name, "abs:", 4) == 0) {
+        name += 4;
+        name_len -= 4;
+    }
     bool has = lxb_dom_element_has_attribute(element, (const lxb_char_t *)name, name_len);
     lua_pushboolean(L, has);
     return 1;
@@ -433,11 +601,13 @@ static int el_tag_name(lua_State *L) {
 
 static int el_id(lua_State *L) {
     lua_pushliteral(L, "id");
+    lua_replace(L, 2);
     return el_attr(L);
 }
 
 static int el_class_name(lua_State *L) {
     lua_pushliteral(L, "class");
+    lua_replace(L, 2);
     return el_attr(L);
 }
 
@@ -570,7 +740,7 @@ static int el_prev_sibling(lua_State *L) {
 static int el_remove(lua_State *L) {
     LuaHtmlElement *el = check_element(L, 1);
     lxb_dom_node_remove(el->node);
-    lua_pushvalue(L, 1); /* allow chaining */
+    lua_pushvalue(L, 1);
     return 1;
 }
 
@@ -599,7 +769,6 @@ static const luaL_Reg el_methods[] = {
 static int el_index(lua_State *L) {
     const char *key = luaL_checkstring(L, 2);
 
-    /* 1. Look up method table */
     lua_getmetatable(L, 1);
     lua_getfield(L, -1, key);
     if (!lua_isnil(L, -1)) {
@@ -607,7 +776,6 @@ static int el_index(lua_State *L) {
     }
     lua_pop(L, 2);
 
-    /* 2. Property / callable-string lookup */
     if (strcmp(key, "text") == 0) {
         return el_text(L);
     } else if (strcmp(key, "ownText") == 0 || strcmp(key, "own_text") == 0) {
@@ -623,11 +791,12 @@ static int el_index(lua_State *L) {
     } else if (strcmp(key, "className") == 0 || strcmp(key, "class_name") == 0) {
         return el_class_name(L);
     } else if (strcmp(key, "href") == 0 || strcmp(key, "src") == 0) {
-        lua_pushvalue(L, 2);
+        /* Auto-resolve absolute URL for .href and .src */
+        lua_pushfstring(L, "abs:%s", key);
+        lua_replace(L, 2);
         return el_attr(L);
     }
 
-    /* 3. Fallback: treat as attribute name (e.g., el["data-id"]) */
     lua_pushvalue(L, 2);
     return el_attr(L);
 }
@@ -766,18 +935,16 @@ static int elements_select(lua_State *L) {
         lua_rawgeti(L, 1, i);
         if (luaL_testudata(L, -1, HTML_ELEMENT_MT)) {
             LuaHtmlElement *el = (LuaHtmlElement *)lua_touserdata(L, -1);
-            /* Run selector on this element */
             run_css_selector(L, el->node, -1, css, css_len, false);
             int sub_len = (int)lua_rawlen(L, -1);
             for (int j = 1; j <= sub_len; j++) {
                 lua_rawgeti(L, -1, j);
-                /* Push into result table */
                 total_collected++;
                 lua_rawseti(L, res_table_idx, total_collected);
             }
-            lua_pop(L, 1); /* pop sub results table */
+            lua_pop(L, 1);
         }
-        lua_pop(L, 1); /* pop element */
+        lua_pop(L, 1);
     }
     return 1;
 }
@@ -788,12 +955,12 @@ static int elements_for_each(lua_State *L) {
     lua_Integer len = (lua_Integer)lua_rawlen(L, 1);
 
     for (lua_Integer i = 1; i <= len; i++) {
-        lua_pushvalue(L, 2); /* function */
-        lua_rawgeti(L, 1, i); /* element */
-        lua_pushinteger(L, i); /* index */
+        lua_pushvalue(L, 2);
+        lua_rawgeti(L, 1, i);
+        lua_pushinteger(L, i);
         lua_call(L, 2, 0);
     }
-    lua_pushvalue(L, 1); /* return self */
+    lua_pushvalue(L, 1);
     return 1;
 }
 
@@ -823,6 +990,7 @@ static const luaL_Reg elements_methods[] = {
 static int html_parse(lua_State *L) {
     size_t len = 0;
     const char *html = luaL_checklstring(L, 1, &len);
+    const char *base = luaL_optstring(L, 2, NULL);
 
     lxb_html_document_t *doc = lxb_html_document_create();
     if (!doc) {
@@ -837,7 +1005,34 @@ static int html_parse(lua_State *L) {
 
     LuaHtmlDocument *ud = (LuaHtmlDocument *)lua_newuserdatauv(L, sizeof(LuaHtmlDocument), 0);
     ud->doc = doc;
+    ud->base_uri = (base != NULL) ? strdup(base) : NULL;
+
     luaL_setmetatable(L, HTML_DOCUMENT_MT);
+    return 1;
+}
+
+/* Legacy NoveLA helpers: html_select(html, css) & html_select_first(html, css) */
+static int html_select_global(lua_State *L) {
+    lua_pushcfunction(L, html_parse);
+    lua_pushvalue(L, 1);
+    lua_call(L, 1, 1);
+
+    lua_getfield(L, -1, "select");
+    lua_pushvalue(L, -2);
+    lua_pushvalue(L, 2);
+    lua_call(L, 2, 1);
+    return 1;
+}
+
+static int html_select_first_global(lua_State *L) {
+    lua_pushcfunction(L, html_parse);
+    lua_pushvalue(L, 1);
+    lua_call(L, 1, 1);
+
+    lua_getfield(L, -1, "selectFirst");
+    lua_pushvalue(L, -2);
+    lua_pushvalue(L, 2);
+    lua_call(L, 2, 1);
     return 1;
 }
 
@@ -849,12 +1044,16 @@ static int string_call_self(lua_State *L) {
 static const luaL_Reg htmllib_funcs[] = {
     {"html_parse", html_parse},
     {"parse", html_parse},
+    {"html_select", html_select_global},
+    {"select", html_select_global},
+    {"html_select_first", html_select_first_global},
+    {"selectFirst", html_select_first_global},
+    {"select_first", html_select_first_global},
     {NULL, NULL}
 };
 
 /* Registration */
 LUAMOD_API int luaopen_html(lua_State *L) {
-    /* 1. Register Document Metatable */
     if (luaL_newmetatable(L, HTML_DOCUMENT_MT)) {
         lua_pushcfunction(L, doc_gc);
         lua_setfield(L, -2, "__gc");
@@ -866,7 +1065,6 @@ LUAMOD_API int luaopen_html(lua_State *L) {
     }
     lua_pop(L, 1);
 
-    /* 2. Register Element Metatable */
     if (luaL_newmetatable(L, HTML_ELEMENT_MT)) {
         lua_pushcfunction(L, el_outer_html);
         lua_setfield(L, -2, "__tostring");
@@ -876,7 +1074,6 @@ LUAMOD_API int luaopen_html(lua_State *L) {
     }
     lua_pop(L, 1);
 
-    /* 3. Register Elements List Metatable */
     if (luaL_newmetatable(L, HTML_ELEMENTS_MT)) {
         lua_pushcfunction(L, elements_outer_html);
         lua_setfield(L, -2, "__tostring");
@@ -888,7 +1085,6 @@ LUAMOD_API int luaopen_html(lua_State *L) {
     }
     lua_pop(L, 1);
 
-    /* 4. Install __call on string metatable for NoveLA/Shosetsu parity (el.text vs el:text()) */
     lua_pushliteral(L, "");
     if (lua_getmetatable(L, -1)) {
         lua_pushcfunction(L, string_call_self);
@@ -897,7 +1093,6 @@ LUAMOD_API int luaopen_html(lua_State *L) {
     }
     lua_pop(L, 1);
 
-    /* 5. Create Library Table */
     luaL_newlib(L, htmllib_funcs);
     return 1;
 }

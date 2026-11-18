@@ -67,6 +67,18 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     LUA_USE_LINUX
 )
 
+# Compiler & Linker optimizations (dead-code elimination and symbol visibility)
+target_compile_options(${PROJECT_NAME} PRIVATE
+    -ffunction-sections
+    -fdata-sections
+    -fvisibility=hidden
+    $<$<CONFIG:Release>:-Os>
+)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+    -Wl,--gc-sections
+)
+
 find_library(LIBDL dl)
 find_library(LIBLOG log)
 

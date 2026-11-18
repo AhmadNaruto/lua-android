@@ -48,6 +48,21 @@ open class LuaTable : LuaValue() {
         }
     }
 
+    open fun rawget(key: LuaValue): LuaValue = map[key] ?: NIL
+    open fun rawget(key: String): LuaValue = rawget(valueOf(key))
+    open fun rawget(key: Int): LuaValue = rawget(valueOf(key))
+
+    open fun rawset(key: LuaValue, value: LuaValue): LuaTable {
+        if (value.isnil()) {
+            map.remove(key)
+        } else {
+            map[key] = value
+        }
+        return this
+    }
+    open fun rawset(key: String, value: LuaValue): LuaTable = rawset(valueOf(key), value)
+    open fun rawset(key: Int, value: LuaValue): LuaTable = rawset(valueOf(key), value)
+
     override fun length(): Int {
         var len = 0
         while (get(valueOf(len + 1)) !is LuaNil) {
@@ -83,23 +98,32 @@ class NativeLuaTable internal constructor(
     internal val ref: Int
 ) : LuaTable() {
 
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override operator fun get(key: LuaValue): LuaValue {
-        if (statePtr == 0L || ref == -1) return NIL
+        if (statePtr == 0L || ref == -1 || closed.get()) return NIL
         return Globals.nativeTableGet(statePtr, ref, key)
     }
 
     override operator fun set(key: LuaValue, value: LuaValue) {
-        if (statePtr == 0L || ref == -1) throw LuaError("Native table is closed or invalid")
+        if (statePtr == 0L || ref == -1 || closed.get()) throw LuaError("Native table is closed or invalid")
         Globals.nativeTableSet(statePtr, ref, key, value)
     }
 
+    override fun rawget(key: LuaValue): LuaValue = get(key)
+
+    override fun rawset(key: LuaValue, value: LuaValue): LuaTable {
+        set(key, value)
+        return this
+    }
+
     override fun length(): Int {
-        if (statePtr == 0L || ref == -1) return 0
+        if (statePtr == 0L || ref == -1 || closed.get()) return 0
         return Globals.nativeTableLength(statePtr, ref)
     }
 
     override fun keys(): List<LuaValue> {
-        if (statePtr == 0L || ref == -1) return emptyList()
+        if (statePtr == 0L || ref == -1 || closed.get()) return emptyList()
         return Globals.nativeTableKeys(statePtr, ref).toList()
     }
 
@@ -116,8 +140,15 @@ class NativeLuaTable internal constructor(
     }
 
     fun close() {
-        if (statePtr != 0L && ref != -1) {
-            Globals.nativeUnref(statePtr, ref)
+        if (closed.compareAndSet(false, true)) {
+            if (statePtr != 0L && ref != -1) {
+                Globals.nativeUnref(statePtr, ref)
+            }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    protected fun finalize() {
+        close()
     }
 }

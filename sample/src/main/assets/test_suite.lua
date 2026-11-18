@@ -242,6 +242,43 @@ local chapters_after_remove = doc:select(".chapter-list a")
 assert_eq(chapters_after_remove:size(), 2, "After remove(), chapter count decreases to 2")
 assert_eq(chapters_after_remove:get(2):text(), "Chapter 3", "Remaining chapter 2 is now Chapter 3")
 
+-- 6.5 NoveLA Legacy Helpers (html_select & html_select_first)
+print("\n[6.5] NoveLA Legacy Helpers & Absolute URL Resolution")
+assert_true(type(html_select) == "function", "Global 'html_select' is registered without require")
+assert_true(type(html_select_first) == "function", "Global 'html_select_first' is registered without require")
+
+local leg_list = html_select(sample_html, ".chapter-item a")
+assert_eq(leg_list:size(), 3, "html_select(html, css) returns 3 items")
+local leg_first = html_select_first(sample_html, "h1.novel-title")
+assert_true(leg_first ~= nil, "html_select_first(html, css) finds first element")
+assert_eq(leg_first:text(), "Solo Leveling", "html_select_first text is 'Solo Leveling'")
+
+-- 6.6 Base URI & Absolute URL Resolution (abs:href & abs:src)
+doc:setBaseUri("https://novel.my.id/series/100")
+assert_eq(doc:baseUri(), "https://novel.my.id/series/100", "doc:baseUri() matches configured URL")
+
+local first_link = doc:selectFirst(".chapter-list a")
+assert_eq(first_link:attr("href"), "/ch-1", "first_link:attr('href') returns relative path")
+assert_eq(first_link:attr("abs:href"), "https://novel.my.id/ch-1", "first_link:attr('abs:href') resolves to absolute URL")
+assert_eq(first_link.href, "https://novel.my.id/ch-1", "first_link.href property auto-resolves to absolute URL")
+
+-- 6.7 Cached Selector Engine Re-use & Malformed Selector Resilience
+print("\n[6.7] Selector Engine Re-use & Resilience")
+local stress_pass = true
+for i = 1, 100 do
+    local res = doc:selectFirst("h1")
+    if res == nil or res:text() ~= "Solo Leveling" then
+        stress_pass = false
+        break
+    end
+end
+assert_true(stress_pass, "Cached selector engine handles 100 consecutive queries flawlessly")
+
+-- Malformed selector recovery without crashing
+local ok_bad_css, bad_res = pcall(function() return doc:select(":::invalid:::selector") end)
+assert_true(ok_bad_css, "Malformed CSS selector handles gracefully without crash")
+assert_eq(bad_res:size(), 0, "Malformed CSS selector returns empty Elements list")
+
 -- Summary
 print("\n==========================================")
 print(string.format("Test Results: %d Passed, %d Failed", passed, failed))

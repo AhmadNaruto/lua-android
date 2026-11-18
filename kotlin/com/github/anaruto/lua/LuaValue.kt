@@ -161,6 +161,7 @@ abstract class LuaValue : Comparable<LuaValue> {
     open fun checklong(): Long = throw LuaError("expected long, got " + typename())
     open fun checkdouble(): Double = throw LuaError("expected double, got " + typename())
     open fun checkjstring(): String = throw LuaError("expected string, got " + typename())
+    open fun checkjstring(default: String): String = if (isnoneornil()) default else checkjstring()
     open fun checktable(): LuaTable = throw LuaError("expected table, got " + typename())
     open fun checkfunction(): LuaFunction = throw LuaError("expected function, got " + typename())
 
@@ -177,6 +178,14 @@ abstract class LuaValue : Comparable<LuaValue> {
     // --- Table Operations ---
 
     open fun length(): Int = 0
+
+    open fun rawget(key: LuaValue): LuaValue = get(key)
+    open fun rawget(key: String): LuaValue = get(key)
+    open fun rawget(key: Int): LuaValue = get(key)
+
+    open fun rawset(key: LuaValue, value: LuaValue) = set(key, value)
+    open fun rawset(key: String, value: LuaValue) = set(key, value)
+    open fun rawset(key: Int, value: LuaValue) = set(key, value)
 
     open operator fun get(key: LuaValue): LuaValue = NIL
     open operator fun get(key: String): LuaValue = get(valueOf(key))

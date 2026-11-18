@@ -59,8 +59,10 @@ class NativeLuaFunction internal constructor(
     internal val ref: Int
 ) : LuaFunction() {
 
+    private val closed = java.util.concurrent.atomic.AtomicBoolean(false)
+
     override operator fun invoke(args: Varargs): Varargs {
-        if (statePtr == 0L || ref == -1) {
+        if (statePtr == 0L || ref == -1 || closed.get()) {
             throw LuaError("Attempt to call closed or invalid native Lua function")
         }
         val results = Globals.nativeInvoke(statePtr, ref, args.toArray())
@@ -72,9 +74,16 @@ class NativeLuaFunction internal constructor(
     }
 
     fun close() {
-        if (statePtr != 0L && ref != -1) {
-            Globals.nativeUnref(statePtr, ref)
+        if (closed.compareAndSet(false, true)) {
+            if (statePtr != 0L && ref != -1) {
+                Globals.nativeUnref(statePtr, ref)
+            }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    protected fun finalize() {
+        close()
     }
 }
 

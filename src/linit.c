@@ -101,9 +101,13 @@ LUALIB_API void luaL_openselectedlibs (lua_State *L, int load, int preload) {
     /* also register global table 'lexbor' pointing to the same library */
     lua_pushvalue(L, -1);
     lua_setglobal(L, "lexbor");
-    /* export html_parse to global environment */
+    /* export html_parse, html_select, html_select_first to global environment */
     lua_getfield(L, -1, "html_parse");
     lua_setglobal(L, "html_parse");
+    lua_getfield(L, -1, "html_select");
+    lua_setglobal(L, "html_select");
+    lua_getfield(L, -1, "html_select_first");
+    lua_setglobal(L, "html_select_first");
     lua_pop(L, 1);
   }
 }
