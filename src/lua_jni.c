@@ -527,16 +527,6 @@ Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
         }
         lua_pop(L, 1);
     }
-
-        // Support Shosetsu/NoveLA OOP string getter idiom: ("text"):text() or el:text()
-        lua_pushliteral(L, "");
-        if (lua_getmetatable(L, -1)) {
-            lua_pushcfunction(L, string_call_self);
-            lua_setfield(L, -2, "__call");
-            lua_pop(L, 1);
-        }
-        lua_pop(L, 1);
-    }
     return (jlong)(uintptr_t)L;
 }
 
