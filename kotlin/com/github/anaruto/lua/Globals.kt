@@ -207,4 +207,56 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
             statePtr = 0L
         }
     }
+
+    /**
+     * Compiles a Lua script directly from a Java [java.io.InputStream].
+     */
+    fun load(inputStream: java.io.InputStream, chunkname: String = "stream"): LuaFunction {
+        val script = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        return load(script, chunkname)
+    }
+
+    /**
+     * Loads a script file directly from Android's assets folder via reflection,
+     * maintaining compatibility with both Android and standard JVM runtimes.
+     *
+     * @param assetManager An instance of `android.content.res.AssetManager`.
+     * @param assetPath Path within the `assets/` directory (e.g. "scripts/main.lua").
+     */
+    fun loadAsset(assetManager: Any, assetPath: String): LuaFunction {
+        val method = assetManager.javaClass.getMethod("open", String::class.java)
+        val stream = method.invoke(assetManager, assetPath) as java.io.InputStream
+        return load(stream, assetPath)
+    }
+
+    /**
+     * Installs a custom loader into Lua's `package.searchers` so that calls like `require("my.module")`
+     * will automatically resolve and execute `assets/{basePath}/my/module.lua`.
+     *
+     * @param assetManager An instance of `android.content.res.AssetManager`.
+     * @param basePath Base subdirectory inside `assets/` (default: "lua").
+     */
+    fun installAssetSearcher(assetManager: Any, basePath: String = "lua") {
+        val packageTable = get("package")
+        val searchers = packageTable.get("searchers")
+        if (searchers.istable()) {
+            val searcherFunc = object : OneArgFunction() {
+                override fun call(arg: LuaValue): LuaValue {
+                    val modName = arg.checkjstring()
+                    val relativePath = (if (basePath.isEmpty()) "" else "$basePath/") +
+                        modName.replace('.', '/') + ".lua"
+                    return try {
+                        val method = assetManager.javaClass.getMethod("open", String::class.java)
+                        val stream = method.invoke(assetManager, relativePath) as java.io.InputStream
+                        val script = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        load(script, relativePath)
+                    } catch (e: Exception) {
+                        LuaValue.valueOf("\n\tno asset '$relativePath'")
+                    }
+                }
+            }
+            val len = searchers.length()
+            searchers.set(len + 1, searcherFunc)
+        }
+    }
 }

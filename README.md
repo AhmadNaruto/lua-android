@@ -154,7 +154,47 @@ JsePlatform.standardGlobals().use { globals ->
 }
 ```
 
-### 5. Menangani Exception
+### 5. Mendaftarkan Fungsi Kotlin ke Lua (Host Callbacks)
+Anda dapat mengekspos fungsi atau method Kotlin/Android agar dapat dipanggil langsung dari dalam skrip Lua:
+```kotlin
+JsePlatform.standardGlobals().use { globals ->
+    // Cara 1: Menggunakan lambda register yang ringkas
+    globals.register("showNotification") { args ->
+        val title = args.arg(1).tojstring()
+        val count = args.arg(2).optint(1)
+        println("Notifikasi: $title ($count)")
+        LuaValue.TRUE // Nilai kembalian ke Lua
+    }
+
+    // Cara 2: Menggunakan turunan OneArgFunction / TwoArgFunction / VarArgFunction
+    globals.set("tambah", object : TwoArgFunction() {
+        override fun call(arg1: LuaValue, arg2: LuaValue): LuaValue {
+            return LuaValue.valueOf(arg1.todouble() + arg2.todouble())
+        }
+    })
+
+    // Panggil dari skrip Lua
+    globals.load("""
+        local ok = showNotification("Pesan Baru", 3)
+        print("Hasil penjumlahan:", tambah(10, 25))
+    """).call()
+}
+```
+
+### 6. Integrasi Android Logcat & Asset Loading
+* **Android Logcat**: Pemanggilan `print(...)` di Lua secara otomatis dialirkan ke **Logcat Android** (`tag: Lua`, level: `INFO`), sehingga debugging di Android Studio sangat mudah tanpa konfigurasi tambahan.
+* **Loading dari APK `assets/`**:
+```kotlin
+// 1. Eksekusi skrip langsung dari assets/
+val mainChunk = globals.loadAsset(context.assets, "scripts/main.lua")
+mainChunk.call()
+
+// 2. Pasang automatic package searcher untuk require()
+// require("network.api") otomatis memuat file assets/lua/network/api.lua!
+globals.installAssetSearcher(context.assets, basePath = "lua")
+```
+
+### 7. Menangani Exception
 ```kotlin
 try {
     globals.load("function broken() return end broken(1").call()

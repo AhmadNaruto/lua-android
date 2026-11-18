@@ -3,11 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#define LOG_TAG "Lua"
+#endif
+
 #include "lua.h"
 #include "lauxlib.h"
 #include "lualib.h"
 
 // Cached global references for JNI performance
+static JavaVM *g_vm = NULL;
+
 static jclass g_class_LuaValue = NULL;
 static jclass g_class_LuaNil = NULL;
 static jclass g_class_LuaBoolean = NULL;
@@ -16,7 +23,9 @@ static jclass g_class_LuaDouble = NULL;
 static jclass g_class_LuaString = NULL;
 static jclass g_class_LuaTable = NULL;
 static jclass g_class_NativeLuaTable = NULL;
+static jclass g_class_LuaFunction = NULL;
 static jclass g_class_NativeLuaFunction = NULL;
+static jclass g_class_Varargs = NULL;
 static jclass g_class_LuaError = NULL;
 
 static jfieldID g_fid_NIL = NULL;
@@ -38,8 +47,35 @@ static jmethodID g_mid_NativeLuaFunction_init = NULL;
 static jfieldID g_fid_NativeLuaTable_ref = NULL;
 static jfieldID g_fid_NativeLuaFunction_ref = NULL;
 
+static jmethodID g_mid_LuaFunction_invoke = NULL;
+static jmethodID g_mid_Varargs_of = NULL;
+static jmethodID g_mid_Varargs_toArray = NULL;
+
+#define CALLBACK_SENTINEL_MT "JNICallbackSentinelMT"
+
+typedef struct {
+    jobject globalRef;
+} CallbackSentinel;
+
 static lua_State *to_lua_state(jlong ptr) {
     return (lua_State *)(uintptr_t)ptr;
+}
+
+static JNIEnv *get_jni_env(int *should_detach) {
+    JNIEnv *env = NULL;
+    *should_detach = 0;
+    if (g_vm == NULL) return NULL;
+    jint res = (*g_vm)->GetEnv(g_vm, (void **)&env, JNI_VERSION_1_6);
+    if (res == JNI_OK) {
+        return env;
+    }
+    if (res == JNI_EDETACHED) {
+        if ((*g_vm)->AttachCurrentThread(g_vm, &env, NULL) == JNI_OK) {
+            *should_detach = 1;
+            return env;
+        }
+    }
+    return NULL;
 }
 
 static void throw_lua_error(JNIEnv *env, const char *msg) {
@@ -48,12 +84,131 @@ static void throw_lua_error(JNIEnv *env, const char *msg) {
     }
 }
 
+// Redirect Lua print() output to Android Logcat
+static int android_lua_print(lua_State *L) {
+    int n = lua_gettop(L);
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    for (int i = 1; i <= n; i++) {
+        if (i > 1) luaL_addchar(&b, '\t');
+        size_t len = 0;
+        const char *s = luaL_tolstring(L, i, &len);
+        luaL_addlstring(&b, s, len);
+        lua_pop(L, 1);
+    }
+    luaL_pushresult(&b);
+    const char *msg = lua_tostring(L, -1);
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "%s", msg ? msg : "");
+#else
+    printf("%s\n", msg ? msg : "");
+    fflush(stdout);
+#endif
+    lua_pop(L, 1);
+    return 0;
+}
+
+// Garbage-collector metamethod for host function callback userdata
+static int callback_sentinel_gc(lua_State *L) {
+    CallbackSentinel *s = (CallbackSentinel *)luaL_checkudata(L, 1, CALLBACK_SENTINEL_MT);
+    if (s != NULL && s->globalRef != NULL) {
+        int should_detach = 0;
+        JNIEnv *env = get_jni_env(&should_detach);
+        if (env != NULL) {
+            (*env)->DeleteGlobalRef(env, s->globalRef);
+        }
+        s->globalRef = NULL;
+        if (should_detach && g_vm != NULL) {
+            (*g_vm)->DetachCurrentThread(g_vm);
+        }
+    }
+    return 0;
+}
+
+static void register_sentinel_mt(lua_State *L) {
+    if (luaL_newmetatable(L, CALLBACK_SENTINEL_MT)) {
+        lua_pushcfunction(L, callback_sentinel_gc);
+        lua_setfield(L, -2, "__gc");
+    }
+    lua_pop(L, 1);
+}
+
 // Forward declarations
 static jobject lua_value_from_stack(JNIEnv *env, lua_State *L, int index, jlong statePtr);
 static void push_lua_value(JNIEnv *env, lua_State *L, jobject jval);
 
+// C Dispatcher for Kotlin/Java host callbacks invoked by Lua
+static int jni_callback_dispatcher(lua_State *L) {
+    int should_detach = 0;
+    JNIEnv *env = get_jni_env(&should_detach);
+    if (env == NULL) {
+        return luaL_error(L, "Failed to obtain JNIEnv for callback execution");
+    }
+
+    CallbackSentinel *s = (CallbackSentinel *)luaL_checkudata(L, lua_upvalueindex(1), CALLBACK_SENTINEL_MT);
+    if (s == NULL || s->globalRef == NULL) {
+        if (should_detach) (*g_vm)->DetachCurrentThread(g_vm);
+        return luaL_error(L, "Callback reference has already been released");
+    }
+    jobject callback = s->globalRef;
+
+    int nargs = lua_gettop(L);
+    jlong statePtr = (jlong)(uintptr_t)L;
+    jobjectArray argsArray = (*env)->NewObjectArray(env, nargs, g_class_LuaValue, NULL);
+    for (int i = 1; i <= nargs; i++) {
+        jobject val = lua_value_from_stack(env, L, i, statePtr);
+        (*env)->SetObjectArrayElement(env, argsArray, i - 1, val);
+        (*env)->DeleteLocalRef(env, val);
+    }
+
+    jobject varargsIn = (*env)->CallStaticObjectMethod(env, g_class_Varargs, g_mid_Varargs_of, argsArray);
+    (*env)->DeleteLocalRef(env, argsArray);
+
+    jobject varargsOut = (*env)->CallObjectMethod(env, callback, g_mid_LuaFunction_invoke, varargsIn);
+    (*env)->DeleteLocalRef(env, varargsIn);
+
+    jthrowable exc = (*env)->ExceptionOccurred(env);
+    if (exc != NULL) {
+        (*env)->ExceptionClear(env);
+        jclass excClass = (*env)->GetObjectClass(env, exc);
+        jmethodID midGetMessage = (*env)->GetMethodID(env, excClass, "getMessage", "()Ljava/lang/String;");
+        jstring jmsg = (jstring)(*env)->CallObjectMethod(env, exc, midGetMessage);
+        const char *msg = jmsg ? (*env)->GetStringUTFChars(env, jmsg, NULL) : "Kotlin callback exception";
+        char errBuf[512];
+        snprintf(errBuf, sizeof(errBuf), "%s", msg ? msg : "Unknown exception");
+        if (jmsg) {
+            (*env)->ReleaseStringUTFChars(env, jmsg, msg);
+            (*env)->DeleteLocalRef(env, jmsg);
+        }
+        (*env)->DeleteLocalRef(env, excClass);
+        (*env)->DeleteLocalRef(env, exc);
+        if (should_detach) (*g_vm)->DetachCurrentThread(g_vm);
+        return luaL_error(L, "%s", errBuf);
+    }
+
+    int resultCount = 0;
+    if (varargsOut != NULL) {
+        jobjectArray resArray = (jobjectArray)(*env)->CallObjectMethod(env, varargsOut, g_mid_Varargs_toArray);
+        if (resArray != NULL) {
+            jsize len = (*env)->GetArrayLength(env, resArray);
+            for (jsize i = 0; i < len; i++) {
+                jobject v = (*env)->GetObjectArrayElement(env, resArray, i);
+                push_lua_value(env, L, v);
+                (*env)->DeleteLocalRef(env, v);
+            }
+            resultCount = (int)len;
+            (*env)->DeleteLocalRef(env, resArray);
+        }
+        (*env)->DeleteLocalRef(env, varargsOut);
+    }
+
+    if (should_detach) (*g_vm)->DetachCurrentThread(g_vm);
+    return resultCount;
+}
+
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
     (void)reserved;
+    g_vm = vm;
     JNIEnv *env = NULL;
     if ((*vm)->GetEnv(vm, (void **)&env, JNI_VERSION_1_6) != JNI_OK) {
         return JNI_ERR;
@@ -106,10 +261,22 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         (*env)->DeleteLocalRef(env, local_NativeLuaTable);
     }
 
+    jclass local_LuaFunction = (*env)->FindClass(env, "com/github/anaruto/lua/LuaFunction");
+    if (local_LuaFunction != NULL) {
+        g_class_LuaFunction = (jclass)(*env)->NewGlobalRef(env, local_LuaFunction);
+        (*env)->DeleteLocalRef(env, local_LuaFunction);
+    }
+
     jclass local_NativeLuaFunction = (*env)->FindClass(env, "com/github/anaruto/lua/NativeLuaFunction");
     if (local_NativeLuaFunction != NULL) {
         g_class_NativeLuaFunction = (jclass)(*env)->NewGlobalRef(env, local_NativeLuaFunction);
         (*env)->DeleteLocalRef(env, local_NativeLuaFunction);
+    }
+
+    jclass local_Varargs = (*env)->FindClass(env, "com/github/anaruto/lua/Varargs");
+    if (local_Varargs != NULL) {
+        g_class_Varargs = (jclass)(*env)->NewGlobalRef(env, local_Varargs);
+        (*env)->DeleteLocalRef(env, local_Varargs);
     }
 
     jclass local_LuaError = (*env)->FindClass(env, "com/github/anaruto/lua/LuaError");
@@ -152,6 +319,15 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_fid_NativeLuaFunction_ref = (*env)->GetFieldID(env, g_class_NativeLuaFunction, "ref", "I");
     }
 
+    if (g_class_LuaFunction != NULL) {
+        g_mid_LuaFunction_invoke = (*env)->GetMethodID(env, g_class_LuaFunction, "invoke", "(Lcom/github/anaruto/lua/Varargs;)Lcom/github/anaruto/lua/Varargs;");
+    }
+
+    if (g_class_Varargs != NULL) {
+        g_mid_Varargs_of = (*env)->GetStaticMethodID(env, g_class_Varargs, "of", "([Lcom/github/anaruto/lua/LuaValue;)Lcom/github/anaruto/lua/Varargs;");
+        g_mid_Varargs_toArray = (*env)->GetMethodID(env, g_class_Varargs, "toArray", "()[Lcom/github/anaruto/lua/LuaValue;");
+    }
+
     return JNI_VERSION_1_6;
 }
 
@@ -170,7 +346,9 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
     if (g_class_LuaString) (*env)->DeleteGlobalRef(env, g_class_LuaString);
     if (g_class_LuaTable) (*env)->DeleteGlobalRef(env, g_class_LuaTable);
     if (g_class_NativeLuaTable) (*env)->DeleteGlobalRef(env, g_class_NativeLuaTable);
+    if (g_class_LuaFunction) (*env)->DeleteGlobalRef(env, g_class_LuaFunction);
     if (g_class_NativeLuaFunction) (*env)->DeleteGlobalRef(env, g_class_NativeLuaFunction);
+    if (g_class_Varargs) (*env)->DeleteGlobalRef(env, g_class_Varargs);
     if (g_class_LuaError) (*env)->DeleteGlobalRef(env, g_class_LuaError);
 }
 
@@ -263,6 +441,13 @@ static void push_lua_value(JNIEnv *env, lua_State *L, jobject jval) {
     } else if ((*env)->IsInstanceOf(env, jval, g_class_NativeLuaFunction)) {
         jint ref = (*env)->GetIntField(env, jval, g_fid_NativeLuaFunction_ref);
         lua_rawgeti(L, LUA_REGISTRYINDEX, ref);
+    } else if ((*env)->IsInstanceOf(env, jval, g_class_LuaFunction)) {
+        // Kotlin/Java host function callback registered into Lua
+        register_sentinel_mt(L);
+        CallbackSentinel *s = (CallbackSentinel *)lua_newuserdata(L, sizeof(CallbackSentinel));
+        s->globalRef = (*env)->NewGlobalRef(env, jval);
+        luaL_setmetatable(L, CALLBACK_SENTINEL_MT);
+        lua_pushcclosure(L, jni_callback_dispatcher, 1);
     } else {
         // Fallback: convert to string via tojstring()
         jstring js = (jstring)(*env)->CallObjectMethod(env, jval, g_mid_LuaValue_tojstring);
@@ -288,6 +473,8 @@ Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
     lua_State *L = luaL_newstate();
     if (L != NULL) {
         luaL_openlibs(L);
+        // Hook print to Android Logcat
+        lua_register(L, "print", android_lua_print);
     }
     return (jlong)(uintptr_t)L;
 }

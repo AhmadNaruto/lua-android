@@ -57,8 +57,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 )
 
 find_library(LIBDL dl)
+find_library(LIBLOG log)
+
+set(EXTRA_LIBS m)
 if(LIBDL)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBDL} m)
-else()
-    target_link_libraries(${PROJECT_NAME} PRIVATE m)
+    list(APPEND EXTRA_LIBS ${LIBDL})
 endif()
+if(LIBLOG)
+    list(APPEND EXTRA_LIBS ${LIBLOG})
+endif()
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${EXTRA_LIBS})
