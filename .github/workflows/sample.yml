@@ -1,0 +1,61 @@
+name: Sample App Build
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'sample/**'
+      - 'lua/**'
+      - 'kotlin/**'
+      - 'src/**'
+      - 'include/**'
+      - 'CMakeLists.txt'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - 'gradlew*'
+      - '.github/workflows/sample.yml'
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-sample:
+    name: Build Sample Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :sample:assembleDebug --stacktrace
+
+      - name: Upload Sample APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-debug-apk-${{ github.sha }}
+          path: sample/build/outputs/apk/debug/*.apk
+          retention-days: 7
