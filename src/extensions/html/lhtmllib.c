@@ -1036,6 +1036,204 @@ static int html_select_first_global(lua_State *L) {
     return 1;
 }
 
+static int html_attr_global(lua_State *L) {
+    lua_pushcfunction(L, html_select_first_global);
+    lua_pushvalue(L, 1);
+    lua_pushvalue(L, 2);
+    lua_call(L, 2, 1);
+    if (lua_isnil(L, -1)) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
+    lua_getfield(L, -1, "attr");
+    lua_pushvalue(L, -2);
+    lua_pushvalue(L, 3);
+    lua_call(L, 2, 1);
+    return 1;
+}
+
+typedef struct {
+    luaL_Buffer *b;
+    int last_char;
+} HtmlTextCtx;
+
+static void html_text_traverse(lxb_dom_node_t *node, HtmlTextCtx *ctx) {
+    if (node == NULL) return;
+
+    if (node->type == LXB_DOM_NODE_TYPE_ELEMENT) {
+        lxb_tag_id_t tag = node->local_name;
+        if (tag == LXB_TAG_SCRIPT || tag == LXB_TAG_STYLE || 
+            tag == LXB_TAG_IFRAME || tag == LXB_TAG_NOSCRIPT) {
+            return;
+        }
+
+        if (tag == LXB_TAG_BR) {
+            luaL_addchar(ctx->b, '\n');
+            ctx->last_char = '\n';
+            return;
+        }
+
+        int is_block = (tag == LXB_TAG_P || tag == LXB_TAG_DIV || 
+                        tag == LXB_TAG_H1 || tag == LXB_TAG_H2 || tag == LXB_TAG_H3 ||
+                        tag == LXB_TAG_H4 || tag == LXB_TAG_H5 || tag == LXB_TAG_H6 ||
+                        tag == LXB_TAG_LI || tag == LXB_TAG_TR || tag == LXB_TAG_BLOCKQUOTE);
+
+        if (is_block && ctx->last_char != '\n' && ctx->last_char != 0) {
+            luaL_addchar(ctx->b, '\n');
+            ctx->last_char = '\n';
+        }
+
+        for (lxb_dom_node_t *ch = node->first_child; ch != NULL; ch = ch->next) {
+            html_text_traverse(ch, ctx);
+        }
+
+        if (is_block && ctx->last_char != '\n' && ctx->last_char != 0) {
+            luaL_addchar(ctx->b, '\n');
+            ctx->last_char = '\n';
+        }
+    } else if (node->type == LXB_DOM_NODE_TYPE_TEXT) {
+        size_t len = 0;
+        lxb_char_t *text = lxb_dom_node_text_content(node, &len);
+        if (text && len > 0) {
+            const char *s = (const char *)text;
+            for (size_t i = 0; i < len; i++) {
+                char c = s[i];
+                if (c == '\r') continue;
+                if (isspace((unsigned char)c)) {
+                    if (ctx->last_char != ' ' && ctx->last_char != '\n' && ctx->last_char != 0) {
+                        luaL_addchar(ctx->b, ' ');
+                        ctx->last_char = ' ';
+                    }
+                } else {
+                    luaL_addchar(ctx->b, c);
+                    ctx->last_char = c;
+                }
+            }
+            lxb_dom_document_destroy_text(node->owner_document, text);
+        }
+    }
+}
+
+static int html_text_global(lua_State *L) {
+    size_t len = 0;
+    const char *html = luaL_checklstring(L, 1, &len);
+    lxb_html_document_t *doc = lxb_html_document_create();
+    if (!doc) {
+        lua_pushliteral(L, "");
+        return 1;
+    }
+    if (lxb_html_document_parse(doc, (const lxb_char_t *)html, len) != LXB_STATUS_OK) {
+        lxb_html_document_destroy(doc);
+        lua_pushliteral(L, "");
+        return 1;
+    }
+
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    HtmlTextCtx ctx = { &b, 0 };
+
+    lxb_dom_node_t *root = doc->body ? lxb_dom_interface_node(doc->body) : lxb_dom_interface_node(doc);
+    html_text_traverse(root, &ctx);
+
+    lxb_html_document_destroy(doc);
+    luaL_pushresult(&b);
+
+    size_t res_len = 0;
+    const char *res = luaL_checklstring(L, -1, &res_len);
+    size_t start = 0;
+    while (start < res_len && (res[start] == ' ' || res[start] == '\n' || res[start] == '\r' || res[start] == '\t')) start++;
+    size_t end = res_len;
+    while (end > start && (res[end - 1] == ' ' || res[end - 1] == '\n' || res[end - 1] == '\r' || res[end - 1] == '\t')) end--;
+
+    if (start > 0 || end < res_len) {
+        lua_pushlstring(L, res + start, end - start);
+        lua_replace(L, -2);
+    }
+    return 1;
+}
+
+typedef struct {
+    lxb_dom_node_t **nodes;
+    size_t count;
+    size_t cap;
+} RemoveCollector;
+
+static lxb_status_t remove_node_cb(lxb_dom_node_t *node, lxb_css_selector_specificity_t spec, void *ctx) {
+    (void)spec;
+    RemoveCollector *col = (RemoveCollector *)ctx;
+    if (node->type != LXB_DOM_NODE_TYPE_ELEMENT) return LXB_STATUS_OK;
+    if (col->count >= col->cap) {
+        col->cap *= 2;
+        col->nodes = (lxb_dom_node_t **)realloc(col->nodes, col->cap * sizeof(lxb_dom_node_t *));
+    }
+    col->nodes[col->count++] = node;
+    return LXB_STATUS_OK;
+}
+
+static int html_remove_global(lua_State *L) {
+    size_t hlen = 0, clen = 0;
+    const char *html = luaL_checklstring(L, 1, &hlen);
+    const char *css = luaL_checklstring(L, 2, &clen);
+
+    lxb_html_document_t *doc = lxb_html_document_create();
+    if (!doc) {
+        lua_pushvalue(L, 1);
+        return 1;
+    }
+    if (lxb_html_document_parse(doc, (const lxb_char_t *)html, hlen) != LXB_STATUS_OK) {
+        lxb_html_document_destroy(doc);
+        lua_pushvalue(L, 1);
+        return 1;
+    }
+
+    lxb_css_parser_t *parser = lxb_css_parser_create();
+    lxb_selectors_t *selectors = lxb_selectors_create();
+    lxb_css_selector_list_t *list = NULL;
+    if (lxb_css_parser_init(parser, NULL) == LXB_STATUS_OK && lxb_selectors_init(selectors) == LXB_STATUS_OK) {
+        list = lxb_css_selectors_parse(parser, (const lxb_char_t *)css, clen);
+    }
+
+    if (list != NULL) {
+        RemoveCollector col;
+        col.cap = 32;
+        col.count = 0;
+        col.nodes = (lxb_dom_node_t **)malloc(col.cap * sizeof(lxb_dom_node_t *));
+
+        lxb_dom_node_t *root = doc->body ? lxb_dom_interface_node(doc->body) : lxb_dom_interface_node(doc);
+        lxb_selectors_find(selectors, root, list, remove_node_cb, &col);
+
+        for (size_t i = 0; i < col.count; i++) {
+            lxb_dom_node_remove(col.nodes[i]);
+        }
+        free(col.nodes);
+        lxb_css_selector_list_destroy_memory(list);
+    }
+
+    if (selectors) lxb_selectors_destroy(selectors, true);
+    if (parser) lxb_css_parser_destroy(parser, true);
+
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    SerializeCtx sctx = { &b };
+    lxb_dom_node_t *target = doc->body ? lxb_dom_interface_node(doc->body) : lxb_dom_interface_node(doc);
+    lxb_html_serialize_deep_cb(target, serialize_buffer_cb, &sctx);
+
+    lxb_html_document_destroy(doc);
+    luaL_pushresult(&b);
+    return 1;
+}
+
+static int url_resolve_global(lua_State *L) {
+    const char *base = luaL_checkstring(L, 1);
+    size_t rel_len = 0;
+    const char *rel = luaL_checklstring(L, 2, &rel_len);
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    resolve_absolute_url(&b, base, rel, rel_len);
+    luaL_pushresult(&b);
+    return 1;
+}
+
 static int string_call_self(lua_State *L) {
     lua_pushvalue(L, 1);
     return 1;
@@ -1049,6 +1247,10 @@ static const luaL_Reg htmllib_funcs[] = {
     {"html_select_first", html_select_first_global},
     {"selectFirst", html_select_first_global},
     {"select_first", html_select_first_global},
+    {"html_attr", html_attr_global},
+    {"html_text", html_text_global},
+    {"html_remove", html_remove_global},
+    {"url_resolve", url_resolve_global},
     {NULL, NULL}
 };
 

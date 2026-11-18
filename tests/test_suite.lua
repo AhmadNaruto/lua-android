@@ -279,6 +279,160 @@ local ok_bad_css, bad_res = pcall(function() return doc:select(":::invalid:::sel
 assert_true(ok_bad_css, "Malformed CSS selector handles gracefully without crash")
 assert_eq(bad_res:size(), 0, "Malformed CSS selector returns empty Elements list")
 
+-- ==========================================
+-- 7. NoveLA Compatibility & Extension Specs
+-- ==========================================
+print("\n[7] NoveLA Specification & Extension Suite")
+
+-- 7.1 Fast DOM Helpers (html_attr, html_text, html_remove, url_resolve)
+assert_true(type(html_attr) == "function", "Global 'html_attr' is registered")
+assert_true(type(html_text) == "function", "Global 'html_text' is registered")
+assert_true(type(html_remove) == "function", "Global 'html_remove' is registered")
+assert_true(type(url_resolve) == "function", "Global 'url_resolve' is registered")
+
+local attr_val = html_attr(sample_html, ".novel-title", "class")
+assert_eq(attr_val, "novel-title", "html_attr(html, css, attr) extracts attribute value")
+
+local raw_chapter_html = [[
+<div id="content">
+    <script>var ad = 123;</script>
+    <style>.ad { display: none; }</style>
+    <p>Di suatu hari yang cerah,<br>Jin-Woo terbangun di dungeon misterius.</p>
+    <div class="ads">Iklan banner judi online</div>
+    <p>Dia melihat sebuah jendela quest biru melayang di depannya.</p>
+</div>
+]]
+
+-- Test html_remove
+local cleaned_html = html_remove(raw_chapter_html, ".ads, script, style")
+assert_true(string.find(cleaned_html, "Iklan banner") == nil, "html_remove strips matched elements")
+
+-- Test html_text
+local extracted_text = html_text(raw_chapter_html)
+assert_true(string.find(extracted_text, "ad = 123") == nil, "html_text strips <script>")
+assert_true(string.find(extracted_text, "display: none") == nil, "html_text strips <style>")
+assert_true(string.find(extracted_text, "cerah,\nJin-Woo") ~= nil or string.find(extracted_text, "cerah,") ~= nil, "html_text preserves <br> as newline")
+assert_true(string.find(extracted_text, "jendela quest") ~= nil, "html_text extracts chapter paragraphs")
+
+-- Test url_resolve
+assert_eq(url_resolve("https://komik.id/manga/solo-leveling/", "ch-1"), "https://komik.id/manga/solo-leveling/ch-1", "url_resolve relative path")
+assert_eq(url_resolve("https://komik.id/manga/solo-leveling/", "/other/page"), "https://komik.id/other/page", "url_resolve root absolute path")
+assert_eq(url_resolve("https://komik.id", "https://cdn.img.com/pic.jpg"), "https://cdn.img.com/pic.jpg", "url_resolve existing absolute URL")
+
+-- 7.2 JSON & Regex Global Aliases
+assert_true(type(json_parse) == "function", "Global 'json_parse' is registered")
+assert_true(type(json_stringify) == "function", "Global 'json_stringify' is registered")
+assert_true(type(regex_match) == "function", "Global 'regex_match' is registered")
+assert_true(type(regex_replace) == "function", "Global 'regex_replace' is registered")
+
+local parsed_json = json_parse('{"id": "bacakomik", "version": 100}')
+assert_true(type(parsed_json) == "table", "json_parse returns table")
+assert_eq(parsed_json.id, "bacakomik", "json_parse string field")
+assert_eq(parsed_json.version, 100, "json_parse numeric field")
+
+local json_str = json_stringify({ title = "Solo Leveling", chapters = 200 })
+assert_true(type(json_str) == "string", "json_stringify returns string")
+assert_true(string.find(json_str, "Solo Leveling") ~= nil, "json_stringify serialized content")
+
+local match_num = regex_match("Episode 145 Final", "\\d+")
+assert_eq(match_num, "145", "regex_match extracts matching regex pattern")
+
+local replaced_str = regex_replace("Halo Dunia!", "Dunia", "NoveLA")
+assert_eq(replaced_str, "Halo NoveLA!", "regex_replace replaces matched substring")
+
+-- 7.3 String Utilities (string_trim, string_normalize, string_split, unescape_unicode)
+assert_true(type(string_trim) == "function", "Global 'string_trim' is registered")
+assert_true(type(string_normalize) == "function", "Global 'string_normalize' is registered")
+assert_true(type(string_starts_with) == "function", "Global 'string_starts_with' is registered")
+assert_true(type(string_ends_with) == "function", "Global 'string_ends_with' is registered")
+assert_true(type(string_split) == "function", "Global 'string_split' is registered")
+assert_true(type(unescape_unicode) == "function", "Global 'unescape_unicode' is registered")
+
+assert_eq(string_trim("   spasi kiri kanan   "), "spasi kiri kanan", "string_trim strips whitespace")
+assert_eq(string_normalize("  spasi   banyak     berulang  "), "spasi banyak berulang", "string_normalize collapses whitespace")
+assert_true(string_starts_with("https://novela.app", "https://"), "string_starts_with matches prefix")
+assert_true(not string_starts_with("http://novela.app", "https://"), "string_starts_with rejects non-prefix")
+assert_true(string_ends_with("chapter-10.html", ".html"), "string_ends_with matches suffix")
+
+local parts = string_split("Action, Fantasy, Adventure, Romance", ", ")
+assert_eq(#parts, 4, "string_split splits by delimiter into table")
+assert_eq(parts[1], "Action", "string_split item 1")
+assert_eq(parts[2], "Fantasy", "string_split item 2")
+assert_eq(parts[4], "Romance", "string_split item 4")
+
+local unescaped = unescape_unicode("Hello\\u0020World\\u0021 \\u3000\\u4e00")
+assert_eq(unescaped, "Hello World! 　一", "unescape_unicode correctly decodes Unicode escape sequences")
+
+-- 7.4 NoveLA Extension Scenarios (Novel, Manga, Video)
+-- Scenario A: Novel Extension Workflow
+local function mockNovelExtension()
+    local catalogHtml = [[
+    <div class="list-update">
+        <div class="novel-item"><a class="series-link" href="/novel/shadow-slave">Shadow Slave</a><span class="rating">4.9</span></div>
+        <div class="novel-item"><a class="series-link" href="/novel/lord-of-mysteries">Lord of the Mysteries</a><span class="rating">5.0</span></div>
+    </div>
+    ]]
+    local doc = html_parse(catalogHtml, "https://novelpub.vip")
+    local items = {}
+    for _, item in ipairs(doc:select(".novel-item")) do
+        local link = item:selectFirst(".series-link")
+        local rating = item:selectFirst(".rating"):text()
+        table.insert(items, {
+            title = link:text(),
+            url = link.href,
+            rating = rating
+        })
+    end
+    return items
+end
+
+local novelItems = mockNovelExtension()
+assert_eq(#novelItems, 2, "Novel catalog parsing extracts 2 items")
+assert_eq(novelItems[1].title, "Shadow Slave", "Novel item 1 title")
+assert_eq(novelItems[1].url, "https://novelpub.vip/novel/shadow-slave", "Novel item 1 absolute URL resolved")
+
+-- Scenario B: Manga Extension Workflow (getPageList)
+local function mockMangaExtension()
+    local mangaHtml = [[
+    <div id="readerarea">
+        <img src="" data-src="https://img.cdn.com/ch1/01.jpg" />
+        <img src="https://img.cdn.com/ch1/02.jpg" />
+        <img data-src="https://img.cdn.com/ch1/03.jpg" />
+    </div>
+    ]]
+    local doc = html_parse(mangaHtml)
+    local pages = {}
+    for _, img in ipairs(doc:select("#readerarea img")) do
+        local src = img:attr("data-src")
+        if src == "" then src = img:attr("src") end
+        if src ~= "" then table.insert(pages, src) end
+    end
+    return pages
+end
+
+local mangaPages = mockMangaExtension()
+assert_eq(#mangaPages, 3, "Manga getPageList extracts 3 images")
+assert_eq(mangaPages[1], "https://img.cdn.com/ch1/01.jpg", "Manga page 1 from data-src")
+assert_eq(mangaPages[2], "https://img.cdn.com/ch1/02.jpg", "Manga page 2 from src")
+
+-- Scenario C: Video Extension Workflow (getVideoList)
+local function mockVideoExtension()
+    local videoStreams = {
+        {
+            url = "https://stream.server.org/live/ep1/master.m3u8",
+            quality = "1080p",
+            mime = "hls",
+            headers = { ["Referer"] = "https://anoboy.show" }
+        }
+    }
+    return videoStreams
+end
+
+local videoList = mockVideoExtension()
+assert_eq(#videoList, 1, "Video getVideoList returns 1 stream")
+assert_eq(videoList[1].quality, "1080p", "Video quality is 1080p")
+assert_eq(videoList[1].mime, "hls", "Video stream MIME is hls")
+
 -- Summary
 print("\n==========================================")
 print(string.format("Test Results: %d Passed, %d Failed", passed, failed))
