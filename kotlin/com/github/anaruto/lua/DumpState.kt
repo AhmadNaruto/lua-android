@@ -11,6 +11,7 @@ import java.io.OutputStream
 object DumpState {
 
     @JvmStatic
+    @Suppress("UNUSED_PARAMETER")
     fun dump(prototype: Any?, outputStream: OutputStream, stripDebug: Boolean = false) {
         if (prototype is ByteArray) {
             outputStream.write(prototype)

@@ -29,7 +29,7 @@ abstract class ZeroArgFunction : LuaFunction() {
  * Convenience base class for functions taking exactly one argument, adapting LuaJ's `OneArgFunction`.
  */
 abstract class OneArgFunction : LuaFunction() {
-    abstract override fun call(arg: LuaValue): LuaValue
+    abstract override fun call(arg1: LuaValue): LuaValue
     override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg1()))
 }
 

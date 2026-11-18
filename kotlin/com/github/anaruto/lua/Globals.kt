@@ -226,6 +226,7 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
     /**
      * Compiles a Lua script directly from a Java [java.io.InputStream].
      */
+    @Suppress("UNUSED_PARAMETER")
     fun load(
         inputStream: java.io.InputStream,
         chunkname: String = "stream",
@@ -303,8 +304,8 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
         val searchers = packageTable.get("searchers")
         if (searchers.istable()) {
             val searcherFunc = object : OneArgFunction() {
-                override fun call(arg: LuaValue): LuaValue {
-                    val modName = arg.checkjstring()
+                override fun call(arg1: LuaValue): LuaValue {
+                    val modName = arg1.checkjstring()
                     val relativePath = (if (basePath.isEmpty()) "" else "$basePath/") +
                         modName.replace('.', '/') + ".lua"
                     return try {
