@@ -35,7 +35,8 @@ jobs:
           ndk-version: r26b
           add-to-path: true
 
-      - name: Determine Build Mode & Release Metadata
+      - name: Determine Build Mode
+        id: mode
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             MODE="${{ inputs.mode }}"
@@ -47,6 +48,8 @@ jobs:
             MODE="test"
             TAG=""
           fi
+          echo "build_mode=$MODE" >> $GITHUB_OUTPUT
+          echo "release_tag=$TAG" >> $GITHUB_OUTPUT
           echo "BUILD_MODE=$MODE" >> $GITHUB_ENV
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
           echo "=========================================="
@@ -78,15 +81,15 @@ jobs:
           done
           echo "✓ All 4 ABI targets built and verified successfully!"
 
-      - name: Create Distribution Archives (.zip and .tar.gz)
+      - name: Create Distribution Archives
         run: |
           cd dist
           zip -r -y ../lua-android-5.5.1.zip jniLibs include kotlin
           tar -czvf ../lua-android-5.5.1.tar.gz jniLibs include kotlin
           cd ..
 
-      - name: Upload Artifacts (Mode: test)
-        if: env.BUILD_MODE == 'test'
+      - name: Upload Test Artifacts
+        if: steps.mode.outputs.build_mode == 'test'
         uses: actions/upload-artifact@v4
         with:
           name: lua-android-test-${{ github.sha }}
@@ -96,8 +99,8 @@ jobs:
             dist/
           retention-days: 7
 
-      - name: Upload Artifacts (Mode: release)
-        if: env.BUILD_MODE == 'release'
+      - name: Upload Release Artifacts
+        if: steps.mode.outputs.build_mode == 'release'
         uses: actions/upload-artifact@v4
         with:
           name: lua-android-release-${{ github.ref_name }}
@@ -106,12 +109,12 @@ jobs:
             lua-android-5.5.1.tar.gz
           retention-days: 90
 
-      - name: Publish GitHub Release (Mode: release)
-        if: env.BUILD_MODE == 'release'
+      - name: Publish GitHub Release
+        if: steps.mode.outputs.build_mode == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.RELEASE_TAG }}
-          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ steps.mode.outputs.release_tag }}
+          tag_name: ${{ steps.mode.outputs.release_tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
