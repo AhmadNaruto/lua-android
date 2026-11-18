@@ -2,24 +2,32 @@
 
 [![Android Build & Release](https://github.com/AhmadNaruto/lua-android/actions/workflows/build.yml/badge.svg)](https://github.com/AhmadNaruto/lua-android/actions/workflows/build.yml)
 [![Lua Version](https://img.shields.io/badge/Lua-5.5.1-blue.svg)](https://www.lua.org)
+[![API Style](https://img.shields.io/badge/API-LuaJ%20Compatible-green.svg)](https://github.com/AhmadNaruto/lua-android)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Embedded **Lua 5.5.1** runtime untuk platform Android dengan pustaka bawaan **JSON** dan **Regex (PCRE/POSIX)** yang siap pakai tanpa `require`, dilengkapi pembungkus (**Kotlin JNI Wrapper**) idiomatik.
+Embedded **Lua 5.5.1** runtime untuk platform Android dengan pustaka bawaan **JSON** dan **Regex (PCRE/POSIX)** yang siap pakai tanpa `require`, dilengkapi arsitektur wrapper Kotlin yang mengadopsi gaya API **LuaJ** (`Globals`, `LuaValue`, `Varargs`, `JsePlatform`).
 
 ---
 
 ## ✨ Fitur Utama
 
-* **Lua 5.5.1**: Menggunakan rilis core Lua terbaru dengan performa virtual machine tinggi dan konsumsi memori rendah.
-* **Built-in JSON (`json`)**: Menggunakan parser **cJSON** yang sangat cepat dan ringan. Tersedia langsung di scope global (`json.decode`, `json.encode`) tanpa perlu `require("json")`.
-* **Built-in Regex (`regex`)**: Menggunakan engine POSIX regex native Android Bionic libc dengan dukungan shorthand PCRE (`\d`, `\D`, `\w`, `\W`, `\s`, `\S`). Tersedia langsung di scope global (`regex.match`, `regex.test`, `regex.find`, `regex.find_all`, `regex.replace`, `regex.split`) tanpa perlu `require("regex")`.
-* **Kotlin JNI Wrapper (`LuaEngine`)**: Pembungkus siap pakai dengan package `com.github.anaruto.lua` yang mendukung blok `.use { ... }` untuk manajemen memori otomatis dan penanganan error terstruktur via `LuaException`.
-* **Multi-ABI Android**: Mendukung seluruh arsitektur Android:
+* **Lua 5.5.1 Upstream**: Menggunakan mesin core Lua terbaru dengan virtual machine cepat, 64-bit integer native, dan efisiensi memori tinggi.
+* **LuaJ-Compatible API Paradigm**: Mengadaptasi antarmuka populer **LuaJ** (`org.luaj.vm2`):
+  * `Globals` dan `JsePlatform.standardGlobals()` untuk pengelolaan global environment.
+  * Hierarki polymorphic `LuaValue` (`LuaNil`, `LuaBoolean`, `LuaInteger`, `LuaDouble`, `LuaString`, `LuaTable`, `LuaFunction`).
+  * Method type checking & conversion (`isnil()`, `isstring()`, `tojstring()`, `toint()`, `todouble()`, dll.).
+  * Multiple return values via `Varargs` (`arg(1)`, `narg()`, `subargs(start)`).
+  * Kotlin operator overloading: `globals["key"]`, `table["field"] = value`, `func(arg1, arg2)`.
+* **Built-in JSON (`json`)**: Menggunakan parser **cJSON** v1.7.18 C-library. Aktif global (`json.decode`, `json.encode`) tanpa perlu `require("json")`.
+* **Built-in Regex (`regex`)**: Menggunakan engine POSIX regex native Android Bionic libc dengan dukungan shorthand PCRE (`\d`, `\D`, `\w`, `\W`, `\s`, `\S`). Aktif global (`regex.match`, `regex.test`, `regex.find`, `regex.find_all`, `regex.replace`, `regex.split`) tanpa perlu `require("regex")`.
+* **High-Performance JNI Bridge**: Menggunakan caching `jclass` & `jmethodID` global pada `JNI_OnLoad` untuk meminimalkan JNI call overhead, proteksi memory leak local reference, dan penggunaan `LUA_REGISTRYINDEX` untuk retensi objek GC yang aman.
+* **Backward Compatible**: Menyertakan `LuaEngine` lama bagi kode yang ingin menggunakan gaya direct procedural.
+* **Multi-ABI Android**: Mendukung seluruh 4 arsitektur Android:
   * `arm64-v8a` (64-bit ARM)
-  * `armeabi-v7a` (32-bit ARM)
+  * `armeabi-v7a` (32-bit ARM, dengan fallback `l_fseek`/`l_ftell` untuk Android API < 24)
   * `x86_64` (64-bit Intel/AMD)
   * `x86` (32-bit Intel)
-* **Automasi CI/CD (GitHub Actions)**: Build otomatis pada push ke branch manapun dengan mode `test` (verifikasi & artifact pengujian) dan mode `release` (membuat rilis otomatis beserta paket distribusi `.zip` & `.tar.gz`).
+* **Automasi CI/CD (GitHub Actions)**: Build otomatis pada setiap push dengan mode `test` (verifikasi biner ELF 4 ABI) dan mode `release` (publikasi GitHub Release dan paket `.zip` & `.tar.gz`).
 
 ---
 
@@ -28,25 +36,38 @@ Embedded **Lua 5.5.1** runtime untuk platform Android dengan pustaka bawaan **JS
 ```text
 lua-android/
 ├── src/                # Core C Lua 5.5.1, cJSON, ljsonlib, lregexlib, dan JNI bridge
+│   ├── lua_jni.c       # JNI Bridge dengan LuaJ-style bindings & JNI_OnLoad caching
+│   ├── ljsonlib.c      # Built-in JSON module
+│   └── lregexlib.c     # Built-in Regex module
 ├── include/            # Public C headers (lua.h, lauxlib.h, lualib.h, luaconf.h, cJSON.h)
 ├── kotlin/             # Kotlin Wrapper (com.github.anaruto.lua)
 │   └── com/github/anaruto/lua/
-│       ├── LuaEngine.kt
-│       └── LuaException.kt
+│       ├── Globals.kt           # Global state controller (LuaJ Globals)
+│       ├── JsePlatform.kt       # Platform factory (JsePlatform.standardGlobals())
+│       ├── LuaValue.kt          # Polymorphic base class (LuaValue)
+│       ├── LuaNil.kt            # Nil value representation
+│       ├── LuaBoolean.kt        # Boolean value representation
+│       ├── LuaNumber.kt         # LuaInteger (64-bit) & LuaDouble representation
+│       ├── LuaString.kt         # String value representation
+│       ├── LuaTable.kt          # LuaTable & NativeLuaTable
+│       ├── LuaFunction.kt       # LuaFunction & NativeLuaFunction
+│       ├── Varargs.kt           # Multi-return values container
+│       ├── LuaError.kt          # LuaError (subclass of LuaException)
+│       ├── LuaEngine.kt         # Legacy engine wrapper
+│       └── LuaException.kt      # Base exception
 ├── .github/workflows/  # GitHub Actions CI/CD (build.yml)
 ├── CMakeLists.txt      # Konfigurasi CMake build
 ├── Android.mk          # Konfigurasi ndk-build legacy
-├── build.sh            # Skrip otomatisasi build lokal multi-ABI
-└── Makefile            # Upstream Makefile Lua
+└── build.sh            # Skrip otomatisasi build lokal multi-ABI
 ```
 
 ---
 
 ## 🚀 Panduan Integrasi ke Aplikasi Android
 
-### Cara 1: Menggunakan Prebuilt Binaries (Paling Mudah)
-1. Unduh arsip `lua-android-5.5.1.zip` dari halaman [Releases](https://github.com/AhmadNaruto/lua-android/releases) atau artifact GitHub Actions.
-2. Salin folder `jniLibs/` ke proyek Android Anda di:
+### Cara 1: Menggunakan Prebuilt Binaries (Rekomendasi)
+1. Unduh arsip rilis `lua-android-*.zip` dari halaman [Releases](https://github.com/AhmadNaruto/lua-android/releases) atau artifact GitHub Actions.
+2. Ekstrak dan salin biner ke folder aplikasi Android Anda:
    ```text
    app/src/main/jniLibs/
    ├── arm64-v8a/liblua.so
@@ -54,80 +75,97 @@ lua-android/
    ├── x86/liblua.so
    └── x86_64/liblua.so
    ```
-3. Salin file wrapper Kotlin ke source code aplikasi Anda:
-   * Salin file dari `kotlin/com/github/anaruto/lua/` ke `app/src/main/java/com/github/anaruto/lua/`.
+3. Salin paket wrapper Kotlin dari `kotlin/com/github/anaruto/lua/` ke folder project Android:
+   ```text
+   app/src/main/java/com/github/anaruto/lua/
+   ```
 
 ---
 
-### Cara 2: Mengompilasi Langsung dari Source (Submodule / CMake)
-Tambahkan ke dalam `app/build.gradle`:
-```groovy
-android {
-    ...
-    defaultConfig {
-        ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-        }
-    }
-    externalNativeBuild {
-        cmake {
-            path file("path/to/lua-android/CMakeLists.txt")
-        }
-    }
-}
-```
+## 💻 Contoh Penggunaan (Gaya API LuaJ)
 
----
-
-## 💻 Contoh Penggunaan di Kotlin
-
+### 1. Inisialisasi dan Evaluasi Dasar
 ```kotlin
-import com.github.anaruto.lua.LuaEngine
-import com.github.anaruto.lua.LuaException
+import com.github.anaruto.lua.JsePlatform
+import com.github.anaruto.lua.LuaValue
 
-fun main() {
-    // Otomatis menutup state saat keluar dari blok .use
-    LuaEngine.create().use { lua ->
+// Inisialisasi globals ala LuaJ
+val globals = JsePlatform.standardGlobals()
 
-        // 1. Eksekusi script Lua
-        lua.doString("""
-            function hitungDiskon(harga, persen)
-                return harga - (harga * persen / 100)
-            end
-        """)
+// Load script chunk dan eksekusi
+val chunk = globals.load("return 'Hello from ' .. _VERSION")
+val result = chunk.call()
+println(result.tojstring()) // "Hello from Lua 5.5.1"
 
-        // 2. Set variabel global dari Kotlin
-        lua.setGlobal("namaBarang", "Laptop Gaming")
+globals.close()
+```
 
-        // 3. Evaluasi ekspresi (JSON & Regex langsung aktif tanpa require!)
-        val output = lua.eval("""
-            local total = hitungDiskon(15000000, 10)
-            local jsonResult = json.encode({
-                barang = namaBarang,
-                harga_akhir = total,
-                apakah_laptop = regex.test(namaBarang, "Laptop")
-            })
-            return jsonResult
-        """)
+### 2. Mengakses dan Memanipulasi Table / Global Variables
+```kotlin
+JsePlatform.standardGlobals().use { globals ->
+    // Set global value
+    globals.set("appName", "NoveLA")
+    globals.set("versionCode", 102)
 
-        println(output)
-        // {"barang":"Laptop Gaming","harga_akhir":13500000,"apakah_laptop":true}
-    }
+    // Kotlin operator indexing: globals["key"]
+    globals["isDebug"] = LuaValue.valueOf(true)
+
+    // Akses library standar Lua
+    val math = globals.get("math")
+    val sqrt = math.get("sqrt")
+    val res = sqrt.call(LuaValue.valueOf(144))
+    println(res.todouble()) // 12.0
 }
 ```
 
-### Menangani Error
+### 3. Menggunakan Fitur Bawaan JSON & Regex (Tanpa `require`)
+```kotlin
+JsePlatform.standardGlobals().use { globals ->
+    val script = """
+        -- Regex PCRE shorthand (\d, \w)
+        local match, id, user = regex.match("Order #9921 from Budi", "Order #(\\d+) from (\\w+)")
+
+        -- Encode ke JSON
+        local payload = json.encode({
+            order_id = tonumber(id),
+            customer = user,
+            verified = regex.test(user, "^[A-Z]")
+        })
+        return payload
+    """
+
+    val chunk = globals.load(script)
+    val jsonString = chunk.call().tojstring()
+    println(jsonString)
+    // {"order_id":9921,"customer":"Budi","verified":true}
+}
+```
+
+### 4. Menangani Multiple Return Values (`Varargs`)
+```kotlin
+JsePlatform.standardGlobals().use { globals ->
+    val chunk = globals.load("return 'apple', 42, true")
+    val varargs = chunk.invoke()
+
+    println(varargs.narg())              // 3
+    println(varargs.arg(1).tojstring())  // "apple"
+    println(varargs.arg(2).toint())      // 42
+    println(varargs.arg(3).toboolean())  // true
+}
+```
+
+### 5. Menangani Exception
 ```kotlin
 try {
-    lua.doString("sintaks salah :== 123")
-} catch (e: LuaException) {
-    println("Gagal mengeksekusi Lua: ${e.message}")
+    globals.load("function broken() return end broken(1").call()
+} catch (e: LuaError) {
+    println("Lua compilation/runtime error: ${e.message}")
 }
 ```
 
 ---
 
-## 📜 Contoh API Lua bawaan
+## 📜 Contoh API Lua Bawaan
 
 ### 1. JSON API (`json`)
 | Fungsi | Deskripsi |
@@ -158,38 +196,15 @@ print(str)               -- {"status":"ok","code":200}
 
 *Flags yang didukung*: `"i"` (case-insensitive), `"m"` (multiline).
 
-```lua
--- Shorthand PCRE (\d, \w, \s) didukung penuh:
-local match, id, name = regex.match("User #452: Ahmad", "User #(\\d+): (\\w+)")
-print(id, name) -- "452", "Ahmad"
-
--- Replace dengan backreference:
-local iso = regex.replace("10/11/2026", "(\\d{2})/(\\d{2})/(\\d{4})", "$3-$2-$1")
-print(iso)      -- "2026-11-10"
-
--- Split string:
-local parts = regex.split("apel, jeruk; mangga", "[,;]\\s*")
-print(parts[2]) -- "jeruk"
-```
-
 ---
 
-## 🔨 Build Lokal
+## 🔨 Build Lokal (NDK)
 
-Jika Anda ingin mengompilasi library native secara lokal di komputer pengembang:
-
-### Persyaratan:
-* Android NDK (r21 atau lebih baru)
-* CMake (3.10 atau lebih baru)
-* Linux / macOS / WSL
-
-### Menjalankan Build:
 ```bash
 export ANDROID_NDK_HOME="/path/to/android-sdk/ndk/25.1.8937393"
 chmod +x build.sh
 ./build.sh
 ```
-File biner hasil build dan file include akan dikumpulkan secara otomatis di folder `dist/`.
 
 ---
 
