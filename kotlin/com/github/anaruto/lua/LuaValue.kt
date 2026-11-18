@@ -176,6 +176,8 @@ abstract class LuaValue : Comparable<LuaValue> {
 
     // --- Table Operations ---
 
+    open fun length(): Int = 0
+
     open operator fun get(key: LuaValue): LuaValue = NIL
     open operator fun get(key: String): LuaValue = get(valueOf(key))
     open operator fun get(key: Int): LuaValue = get(valueOf(key))

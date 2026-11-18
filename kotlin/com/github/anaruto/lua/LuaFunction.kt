@@ -21,7 +21,7 @@ abstract class VarArgFunction : LuaFunction()
  * Convenience base class for functions taking no arguments, adapting LuaJ's `ZeroArgFunction`.
  */
 abstract class ZeroArgFunction : LuaFunction() {
-    abstract fun call(): LuaValue
+    abstract override fun call(): LuaValue
     override operator fun invoke(args: Varargs): Varargs = Varargs.of(call())
 }
 
@@ -29,7 +29,7 @@ abstract class ZeroArgFunction : LuaFunction() {
  * Convenience base class for functions taking exactly one argument, adapting LuaJ's `OneArgFunction`.
  */
 abstract class OneArgFunction : LuaFunction() {
-    abstract fun call(arg: LuaValue): LuaValue
+    abstract override fun call(arg: LuaValue): LuaValue
     override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg1()))
 }
 
@@ -37,7 +37,7 @@ abstract class OneArgFunction : LuaFunction() {
  * Convenience base class for functions taking two arguments, adapting LuaJ's `TwoArgFunction`.
  */
 abstract class TwoArgFunction : LuaFunction() {
-    abstract fun call(arg1: LuaValue, arg2: LuaValue): LuaValue
+    abstract override fun call(arg1: LuaValue, arg2: LuaValue): LuaValue
     override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2)))
 }
 
@@ -45,7 +45,7 @@ abstract class TwoArgFunction : LuaFunction() {
  * Convenience base class for functions taking three arguments, adapting LuaJ's `ThreeArgFunction`.
  */
 abstract class ThreeArgFunction : LuaFunction() {
-    abstract fun call(arg1: LuaValue, arg2: LuaValue, arg3: LuaValue): LuaValue
+    abstract override fun call(arg1: LuaValue, arg2: LuaValue, arg3: LuaValue): LuaValue
     override operator fun invoke(args: Varargs): Varargs = Varargs.of(call(args.arg(1), args.arg(2), args.arg(3)))
 }
 
