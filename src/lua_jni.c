@@ -25,8 +25,12 @@ static jclass g_class_LuaTable = NULL;
 static jclass g_class_NativeLuaTable = NULL;
 static jclass g_class_LuaFunction = NULL;
 static jclass g_class_NativeLuaFunction = NULL;
+static jclass g_class_LuaUserdata = NULL;
 static jclass g_class_Varargs = NULL;
 static jclass g_class_LuaError = NULL;
+
+static jmethodID g_mid_LuaUserdata_init = NULL;
+static jfieldID g_fid_LuaUserdata_m_instance = NULL;
 
 static jfieldID g_fid_NIL = NULL;
 static jfieldID g_fid_TRUE = NULL;
@@ -267,6 +271,12 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         (*env)->DeleteLocalRef(env, local_LuaFunction);
     }
 
+    jclass local_LuaUserdata = (*env)->FindClass(env, "com/github/anaruto/lua/LuaUserdata");
+    if (local_LuaUserdata != NULL) {
+        g_class_LuaUserdata = (jclass)(*env)->NewGlobalRef(env, local_LuaUserdata);
+        (*env)->DeleteLocalRef(env, local_LuaUserdata);
+    }
+
     jclass local_NativeLuaFunction = (*env)->FindClass(env, "com/github/anaruto/lua/NativeLuaFunction");
     if (local_NativeLuaFunction != NULL) {
         g_class_NativeLuaFunction = (jclass)(*env)->NewGlobalRef(env, local_NativeLuaFunction);
@@ -314,6 +324,11 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved) {
         g_fid_NativeLuaTable_ref = (*env)->GetFieldID(env, g_class_NativeLuaTable, "ref", "I");
     }
 
+    if (g_class_LuaUserdata != NULL) {
+        g_mid_LuaUserdata_init = (*env)->GetMethodID(env, g_class_LuaUserdata, "<init>", "(Ljava/lang/Object;)V");
+        g_fid_LuaUserdata_m_instance = (*env)->GetFieldID(env, g_class_LuaUserdata, "m_instance", "Ljava/lang/Object;");
+    }
+
     if (g_class_NativeLuaFunction != NULL) {
         g_mid_NativeLuaFunction_init = (*env)->GetMethodID(env, g_class_NativeLuaFunction, "<init>", "(JI)V");
         g_fid_NativeLuaFunction_ref = (*env)->GetFieldID(env, g_class_NativeLuaFunction, "ref", "I");
@@ -348,6 +363,7 @@ JNIEXPORT void JNICALL JNI_OnUnload(JavaVM *vm, void *reserved) {
     if (g_class_NativeLuaTable) (*env)->DeleteGlobalRef(env, g_class_NativeLuaTable);
     if (g_class_LuaFunction) (*env)->DeleteGlobalRef(env, g_class_LuaFunction);
     if (g_class_NativeLuaFunction) (*env)->DeleteGlobalRef(env, g_class_NativeLuaFunction);
+    if (g_class_LuaUserdata) (*env)->DeleteGlobalRef(env, g_class_LuaUserdata);
     if (g_class_Varargs) (*env)->DeleteGlobalRef(env, g_class_Varargs);
     if (g_class_LuaError) (*env)->DeleteGlobalRef(env, g_class_LuaError);
 }
@@ -393,6 +409,20 @@ static jobject lua_value_from_stack(JNIEnv *env, lua_State *L, int index, jlong 
             lua_pushvalue(L, index);
             int ref = luaL_ref(L, LUA_REGISTRYINDEX);
             return (*env)->NewObject(env, g_class_NativeLuaFunction, g_mid_NativeLuaFunction_init, statePtr, (jint)ref);
+        }
+
+        case LUA_TUSERDATA: {
+            CallbackSentinel *s = (CallbackSentinel *)luaL_testudata(L, index, CALLBACK_SENTINEL_MT);
+            if (s != NULL && s->globalRef != NULL && g_class_LuaUserdata != NULL) {
+                return (*env)->NewObject(env, g_class_LuaUserdata, g_mid_LuaUserdata_init, s->globalRef);
+            }
+            // Fall through to default
+            const char *s_str = luaL_tolstring(L, index, NULL);
+            jstring js = (*env)->NewStringUTF(env, s_str ? s_str : "");
+            lua_pop(L, 1);
+            jobject obj = (*env)->CallStaticObjectMethod(env, g_class_LuaString, g_mid_valueOf_string, js);
+            (*env)->DeleteLocalRef(env, js);
+            return obj;
         }
 
         default: {
@@ -448,6 +478,13 @@ static void push_lua_value(JNIEnv *env, lua_State *L, jobject jval) {
         s->globalRef = (*env)->NewGlobalRef(env, jval);
         luaL_setmetatable(L, CALLBACK_SENTINEL_MT);
         lua_pushcclosure(L, jni_callback_dispatcher, 1);
+    } else if (g_class_LuaUserdata != NULL && (*env)->IsInstanceOf(env, jval, g_class_LuaUserdata)) {
+        // Kotlin/Java host userdata
+        register_sentinel_mt(L);
+        CallbackSentinel *s = (CallbackSentinel *)lua_newuserdata(L, sizeof(CallbackSentinel));
+        jobject inst = (*env)->GetObjectField(env, jval, g_fid_LuaUserdata_m_instance);
+        s->globalRef = inst ? (*env)->NewGlobalRef(env, inst) : NULL;
+        luaL_setmetatable(L, CALLBACK_SENTINEL_MT);
     } else {
         // Fallback: convert to string via tojstring()
         jstring js = (jstring)(*env)->CallObjectMethod(env, jval, g_mid_LuaValue_tojstring);
@@ -466,6 +503,11 @@ static void push_lua_value(JNIEnv *env, lua_State *L, jobject jval) {
 // Globals native bindings (LuaJ architecture)
 // =========================================================================
 
+static int string_call_self(lua_State *L) {
+    lua_pushvalue(L, 1);
+    return 1;
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
     (void)env;
@@ -475,6 +517,15 @@ Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
         luaL_openlibs(L);
         // Hook print to Android Logcat
         lua_register(L, "print", android_lua_print);
+
+        // Support Shosetsu/NoveLA OOP string getter idiom: ("text"):text() or el:text()
+        lua_pushliteral(L, "");
+        if (lua_getmetatable(L, -1)) {
+            lua_pushcfunction(L, string_call_self);
+            lua_setfield(L, -2, "__call");
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
     }
     return (jlong)(uintptr_t)L;
 }

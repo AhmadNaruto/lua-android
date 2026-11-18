@@ -211,9 +211,56 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
     /**
      * Compiles a Lua script directly from a Java [java.io.InputStream].
      */
-    fun load(inputStream: java.io.InputStream, chunkname: String = "stream"): LuaFunction {
-        val script = inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        return load(script, chunkname)
+    fun load(
+        inputStream: java.io.InputStream,
+        chunkname: String = "stream",
+        mode: String = "bt",
+        env: LuaValue = this
+    ): LuaFunction {
+        val bytes = inputStream.readBytes()
+        return load(bytes, chunkname)
+    }
+
+    /**
+     * Loads a pre-compiled binary bytecode chunk or Lua source script directly from a [ByteArray].
+     */
+    fun load(bytes: ByteArray, chunkname: String = "chunk"): LuaFunction {
+        checkState()
+        val str = String(bytes, Charsets.ISO_8859_1)
+        val ref = nativeLoad(statePtr, str, chunkname)
+        if (ref == -1) {
+            throw LuaError("Failed to compile script chunk: $chunkname")
+        }
+        return NativeLuaFunction(statePtr, ref)
+    }
+
+    /**
+     * Dumps an executable [LuaFunction] into native Lua 5.5 binary bytecode.
+     */
+    fun dump(function: LuaFunction): ByteArray {
+        val stringLib = get("string")
+        val dumpFn = stringLib.get("dump")
+        if (!dumpFn.isfunction()) {
+            throw LuaError("string.dump is not available")
+        }
+        val byteStr = dumpFn.call(function).tojstring()
+        return byteStr.toByteArray(Charsets.ISO_8859_1)
+    }
+
+    /**
+     * Compiles a Lua script string directly into serialized binary bytecode.
+     */
+    fun compileBytecode(script: String, chunkname: String = "script"): ByteArray {
+        val fn = load(script, chunkname)
+        return dump(fn)
+    }
+
+    /**
+     * Compatibility helper for LuaJ's `compilePrototype(Reader, chunkName)`.
+     */
+    fun compilePrototype(reader: java.io.Reader, chunkname: String = "script"): ByteArray {
+        val script = reader.readText()
+        return compileBytecode(script, chunkname)
     }
 
     /**

@@ -11,13 +11,33 @@ import java.util.LinkedHashMap
 open class LuaTable : LuaValue() {
 
     private val map: MutableMap<LuaValue, LuaValue> = LinkedHashMap()
+    private var metatable: LuaValue = NIL
 
     override fun type(): Int = TTABLE
     override fun istable(): Boolean = true
     override fun checktable(): LuaTable = this
 
+    override fun getmetatable(): LuaValue = metatable
+
+    override fun setmetatable(metatable: LuaValue): LuaValue {
+        this.metatable = metatable
+        return this
+    }
+
     override fun get(key: LuaValue): LuaValue {
-        return map[key] ?: NIL
+        val direct = map[key]
+        if (direct != null && !direct.isnil()) {
+            return direct
+        }
+        if (!metatable.isnil()) {
+            val indexHandler = metatable.get(INDEX)
+            if (indexHandler.istable()) {
+                return indexHandler.get(key)
+            } else if (indexHandler.isfunction()) {
+                return indexHandler.call(this, key)
+            }
+        }
+        return NIL
     }
 
     override fun set(key: LuaValue, value: LuaValue) {

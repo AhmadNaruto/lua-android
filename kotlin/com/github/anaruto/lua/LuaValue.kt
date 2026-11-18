@@ -28,6 +28,21 @@ abstract class LuaValue : Comparable<LuaValue> {
         @JvmField
         val FALSE: LuaBoolean = LuaBoolean.FALSE
 
+        @JvmField
+        val INDEX: LuaString = LuaString.valueOf("__index")
+
+        @JvmField
+        val CALL: LuaString = LuaString.valueOf("__call")
+
+        @JvmField
+        val NEWINDEX: LuaString = LuaString.valueOf("__newindex")
+
+        @JvmField
+        val METATABLE: LuaString = LuaString.valueOf("__metatable")
+
+        @JvmField
+        val TOSTRING: LuaString = LuaString.valueOf("__tostring")
+
         @JvmStatic
         fun valueOf(b: Boolean): LuaBoolean = if (b) TRUE else FALSE
 
@@ -138,6 +153,8 @@ abstract class LuaValue : Comparable<LuaValue> {
     open fun optlong(default: Long): Long = if (isnoneornil()) default else tolong()
     open fun optdouble(default: Double): Double = if (isnoneornil()) default else todouble()
     open fun optjstring(default: String?): String? = if (isnoneornil()) default else tojstring()
+    open fun opttable(default: LuaTable?): LuaTable? = if (isnoneornil()) default else checktable()
+    open fun optfunction(default: LuaFunction?): LuaFunction? = if (isnoneornil()) default else checkfunction()
 
     open fun checkboolean(): Boolean = throw LuaError("expected boolean, got " + typename())
     open fun checkint(): Int = throw LuaError("expected int, got " + typename())
@@ -146,6 +163,16 @@ abstract class LuaValue : Comparable<LuaValue> {
     open fun checkjstring(): String = throw LuaError("expected string, got " + typename())
     open fun checktable(): LuaTable = throw LuaError("expected table, got " + typename())
     open fun checkfunction(): LuaFunction = throw LuaError("expected function, got " + typename())
+
+    open fun checkuserdata(): Any = throw LuaError("expected userdata, got " + typename())
+    @Suppress("UNCHECKED_CAST")
+    open fun <T> checkuserdata(clazz: Class<T>): T = throw LuaError("expected userdata of type " + clazz.name + ", got " + typename())
+    open fun touserdata(): Any? = null
+
+    open fun getmetatable(): LuaValue = NIL
+    open fun setmetatable(metatable: LuaValue): LuaValue {
+        throw LuaError("cannot set metatable on " + typename())
+    }
 
     // --- Table Operations ---
 

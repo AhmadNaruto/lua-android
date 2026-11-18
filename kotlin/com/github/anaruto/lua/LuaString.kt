@@ -6,6 +6,9 @@ package com.github.anaruto.lua
 class LuaString private constructor(private val value: String) : LuaValue() {
 
     companion object {
+        @JvmField
+        val s_metatable: LuaTable = LuaTable()
+
         @JvmStatic
         fun valueOf(s: String): LuaString = LuaString(s)
     }
