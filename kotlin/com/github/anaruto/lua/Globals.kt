@@ -52,49 +52,64 @@ class Globals private constructor(internal var statePtr: Long) : LuaTable(), Clo
         // --- Native Bindings ---
 
         @JvmStatic
-        internal external fun nativeNewState(): Long
+        @JvmName("nativeNewState")
+        external fun nativeNewState(): Long
 
         @JvmStatic
-        internal external fun nativeClose(ptr: Long)
+        @JvmName("nativeClose")
+        external fun nativeClose(ptr: Long)
 
         @JvmStatic
-        internal external fun nativeLoad(ptr: Long, script: String, chunkname: String): Int
+        @JvmName("nativeLoad")
+        external fun nativeLoad(ptr: Long, script: String, chunkname: String): Int
 
         @JvmStatic
-        internal external fun nativeLoadFile(ptr: Long, filePath: String): Int
+        @JvmName("nativeLoadFile")
+        external fun nativeLoadFile(ptr: Long, filePath: String): Int
 
         @JvmStatic
-        internal external fun nativeInvoke(ptr: Long, funcRef: Int, args: Array<LuaValue>): Array<LuaValue>
+        @JvmName("nativeInvoke")
+        external fun nativeInvoke(ptr: Long, funcRef: Int, args: Array<LuaValue>): Array<LuaValue>
 
         @JvmStatic
-        internal external fun nativeUnref(ptr: Long, ref: Int)
+        @JvmName("nativeUnref")
+        external fun nativeUnref(ptr: Long, ref: Int)
 
         @JvmStatic
-        internal external fun nativeGetGlobal(ptr: Long, name: String): LuaValue
+        @JvmName("nativeGetGlobal")
+        external fun nativeGetGlobal(ptr: Long, name: String): LuaValue
 
         @JvmStatic
-        internal external fun nativeSetGlobal(ptr: Long, name: String, value: LuaValue)
+        @JvmName("nativeSetGlobal")
+        external fun nativeSetGlobal(ptr: Long, name: String, value: LuaValue)
 
         @JvmStatic
-        internal external fun nativeTableGet(ptr: Long, tableRef: Int, key: LuaValue): LuaValue
+        @JvmName("nativeTableGet")
+        external fun nativeTableGet(ptr: Long, tableRef: Int, key: LuaValue): LuaValue
 
         @JvmStatic
-        internal external fun nativeTableSet(ptr: Long, tableRef: Int, key: LuaValue, value: LuaValue)
+        @JvmName("nativeTableSet")
+        external fun nativeTableSet(ptr: Long, tableRef: Int, key: LuaValue, value: LuaValue)
 
         @JvmStatic
-        internal external fun nativeTableLength(ptr: Long, tableRef: Int): Int
+        @JvmName("nativeTableLength")
+        external fun nativeTableLength(ptr: Long, tableRef: Int): Int
 
         @JvmStatic
-        internal external fun nativeTableKeys(ptr: Long, tableRef: Int): Array<LuaValue>
+        @JvmName("nativeTableKeys")
+        external fun nativeTableKeys(ptr: Long, tableRef: Int): Array<LuaValue>
 
         @JvmStatic
-        internal external fun nativeNewTable(ptr: Long): Int
+        @JvmName("nativeNewTable")
+        external fun nativeNewTable(ptr: Long): Int
 
         @JvmStatic
-        internal external fun nativeDoString(ptr: Long, script: String): Array<LuaValue>?
+        @JvmName("nativeDoString")
+        external fun nativeDoString(ptr: Long, script: String): Array<LuaValue>?
 
         @JvmStatic
-        internal external fun nativeDoFile(ptr: Long, filePath: String): Array<LuaValue>?
+        @JvmName("nativeDoFile")
+        external fun nativeDoFile(ptr: Long, filePath: String): Array<LuaValue>?
     }
 
     val isClosed: Boolean
