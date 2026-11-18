@@ -35,6 +35,12 @@ object NovelASupport {
         fun showError(title: String, message: String, authUrl: String?)
     }
 
+    interface PreferenceHandler {
+        fun getPreference(key: String): String?
+        fun setPreference(key: String, value: String)
+        fun getLocalStorage(url: String, key: String): String? = null
+    }
+
     interface LogHandler {
         fun info(tag: String, message: String)
         fun error(tag: String, message: String)
@@ -93,6 +99,7 @@ object NovelASupport {
         httpHandler: HttpHandler? = null,
         cookieHandler: CookieHandler? = null,
         errorHandler: ErrorHandler? = null,
+        preferenceHandler: PreferenceHandler? = null,
         logHandler: LogHandler = defaultLogHandler
     ) {
         // --- HTTP GET ---
@@ -159,6 +166,27 @@ object NovelASupport {
         globals.register("log_error") { args ->
             logHandler.error("NoveLA", args.arg1().tojstring())
             LuaValue.NIL
+        }
+
+        // --- PREFERENCES & WEBVIEW STORAGE ---
+        globals.register("get_preference") { args ->
+            val key = args.checkjstring(1)
+            val v = preferenceHandler?.getPreference(key)
+            if (v != null) LuaValue.valueOf(v) else LuaValue.NIL
+        }
+
+        globals.register("set_preference") { args ->
+            val key = args.checkjstring(1)
+            val value = args.checkjstring(2)
+            preferenceHandler?.setPreference(key, value)
+            LuaValue.NIL
+        }
+
+        globals.register("get_localStorage") { args ->
+            val url = args.checkjstring(1)
+            val key = args.checkjstring(2)
+            val v = preferenceHandler?.getLocalStorage(url, key)
+            if (v != null) LuaValue.valueOf(v) else LuaValue.NIL
         }
 
         // --- ERROR & AUTH UI ---

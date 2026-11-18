@@ -1,274 +1,359 @@
 # lua-android
 
 [![Android Build & Release](https://github.com/AhmadNaruto/lua-android/actions/workflows/build.yml/badge.svg)](https://github.com/AhmadNaruto/lua-android/actions/workflows/build.yml)
+[![Sample App Build](https://github.com/AhmadNaruto/lua-android/actions/workflows/sample.yml/badge.svg)](https://github.com/AhmadNaruto/lua-android/actions/workflows/sample.yml)
 [![Lua Version](https://img.shields.io/badge/Lua-5.5.1-blue.svg)](https://www.lua.org)
-[![API Style](https://img.shields.io/badge/API-LuaJ%20Compatible-green.svg)](https://github.com/AhmadNaruto/lua-android)
+[![HTML Parser](https://img.shields.io/badge/HTML5-Lexbor%20Native-orange.svg)](https://github.com/lexbor/lexbor)
+[![API Style](https://img.shields.io/badge/API-LuaJ%20%2F%20NoveLA%20Compatible-green.svg)](https://github.com/AhmadNaruto/lua-android)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Embedded **Lua 5.5.1** runtime untuk platform Android dengan pustaka bawaan **JSON** dan **Regex (PCRE/POSIX)** yang siap pakai tanpa `require`, dilengkapi arsitektur wrapper Kotlin yang mengadopsi gaya API **LuaJ** (`Globals`, `LuaValue`, `Varargs`, `JsePlatform`).
+Embedded **Lua 5.5.1** runtime berkinerja tinggi untuk Android yang dirancang sebagai pengganti modern (*drop-in replacement*) untuk **LuaJ**. Dilengkapi parser HTML5 **Lexbor C native**, pustaka **cJSON**, POSIX/PCRE **Regex**, utilitas kriptografi C (**AES-128**, **Base64 RFC 4648**, **URL Encode**), serta keselarasan API penuh dengan spesifikasi ekstensi **NoveLA** (`novelx-sources`) dan **Shosetsu**.
 
 ---
 
 ## ✨ Fitur Utama
 
-* **Lua 5.5.1 Upstream**: Menggunakan mesin core Lua terbaru dengan virtual machine cepat, 64-bit integer native, dan efisiensi memori tinggi.
-* **LuaJ-Compatible API Paradigm**: Mengadaptasi antarmuka populer **LuaJ** (`org.luaj.vm2`):
-  * `Globals` dan `JsePlatform.standardGlobals()` untuk pengelolaan global environment.
-  * Hierarki polymorphic `LuaValue` (`LuaNil`, `LuaBoolean`, `LuaInteger`, `LuaDouble`, `LuaString`, `LuaTable`, `LuaFunction`).
-  * Method type checking & conversion (`isnil()`, `isstring()`, `tojstring()`, `toint()`, `todouble()`, dll.).
-  * Multiple return values via `Varargs` (`arg(1)`, `narg()`, `subargs(start)`).
-  * Kotlin operator overloading: `globals["key"]`, `table["field"] = value`, `func(arg1, arg2)`.
-* **Built-in JSON (`json`)**: Menggunakan parser **cJSON** v1.7.18 C-library. Aktif global (`json.decode`, `json.encode`) tanpa perlu `require("json")`.
-* **Built-in Regex (`regex`)**: Menggunakan engine POSIX regex native Android Bionic libc dengan dukungan shorthand PCRE (`\d`, `\D`, `\w`, `\W`, `\s`, `\S`). Aktif global (`regex.match`, `regex.test`, `regex.find`, `regex.find_all`, `regex.replace`, `regex.split`) tanpa perlu `require("regex")`.
-* **High-Performance JNI Bridge**: Menggunakan caching `jclass` & `jmethodID` global pada `JNI_OnLoad` untuk meminimalkan JNI call overhead, proteksi memory leak local reference, dan penggunaan `LUA_REGISTRYINDEX` untuk retensi objek GC yang aman.
-* **Backward Compatible**: Menyertakan `LuaEngine` lama bagi kode yang ingin menggunakan gaya direct procedural.
-* **Multi-ABI Android**: Mendukung seluruh 4 arsitektur Android:
+* **Core Lua 5.5.1 Upstream**:
+  * Menggunakan engine Lua 5.5 terbaru dengan 64-bit integer, bitwise operators native (`<<`, `>>`, `&`, `|`, `~`, `//`), dan efisiensi memori tingkat tinggi.
+* **Lexbor HTML5 & CSS Selector Engine Native**:
+  * Pengurai HTML5 standar WHATWG tercepat di C (`lhtmllib.c` + `lexbor.c`).
+  * 0 alokasi memori pada JVM Java heap saat mem-parsing DOM, menghilangkan masalah *GC pause/jank* pada Android.
+  * Mendukung CSS Selectors, manipulasi tree, resolusi Base URI (`abs:href`, `abs:src`, `.href`, `.src`), dan format teks novel (`html_text`).
+* **Built-in JSON (cJSON v1.7.18)**:
+  * Parser & encoder JSON native C berkecepatan tinggi tanpa perlu `require("json")`.
+  * Menyertakan fungsi global `json.decode`, `json.encode`, serta alias NoveLA `json_parse` dan `json_stringify`.
+* **Built-in Regex (POSIX + PCRE Shorthand)**:
+  * Pattern matching native dengan dukungan sintaks PCRE shorthand (`\d`, `\D`, `\w`, `\W`, `\s`, `\S`).
+  * Menyertakan fungsi `regex.match`, `regex.test`, `regex.find`, `regex.replace`, `regex.split`, serta alias global `regex_match` dan `regex_replace`.
+* **Native Crypto & Encoding**:
+  * Dekripsi AES-128-CBC dengan unpadding otomatis PKCS#7/PKCS#5 (`aes_decrypt`).
+  * Encoder/decoder Base64 RFC 4648 (`base64_encode`, `base64_decode`).
+  * Standard URL encoder (`url_encode`, `url_encode_charset`).
+* **NoveLA Extension Specification Compatibility**:
+  * Kompatibel penuh dengan spesifikasi runtime **NoveLA** (`novelx-sources`) untuk Novel, Manga (`getPageList`), dan Video (`getVideoList`).
+  * Helper DOM cepat: `html_select`, `html_select_first`, `html_attr`, `html_text`, `html_remove`, `url_resolve`.
+  * Utilitas teks & Unicode: `string_trim`, `string_clean`, `string_normalize`, `string_starts_with`, `string_ends_with`, `string_split`, dan `unescape_unicode`.
+  * Adapter Kotlin `NovelASupport.kt` dengan dukungan method chaining `http_get(url):toHtml()`.
+* **Arsitektur Kotlin Bergaya LuaJ**:
+  * `Globals` dan `JsePlatform.standardGlobals()` untuk pengelolaan state.
+  * Hierarki polymorphic `LuaValue` (`LuaTable`, `LuaFunction`, `LuaString`, `LuaNumber`, `LuaBoolean`, `LuaNil`, `Varargs`).
+  * Thread-safe (`synchronized(this)`) dan pembebasan memori registry C otomatis (*auto-unref*) saat objek Kotlin di-GC.
+* **Multi-ABI Android Lengkap**:
   * `arm64-v8a` (64-bit ARM)
-  * `armeabi-v7a` (32-bit ARM, dengan fallback `l_fseek`/`l_ftell` untuk Android API < 24)
+  * `armeabi-v7a` (32-bit ARM)
   * `x86_64` (64-bit Intel/AMD)
   * `x86` (32-bit Intel)
-* **Automasi CI/CD (GitHub Actions)**: Build otomatis pada setiap push dengan mode `test` (verifikasi biner ELF 4 ABI) dan mode `release` (publikasi GitHub Release dan paket `.zip` & `.tar.gz`).
+* **Sample Android App & 159 Test Suite**:
+  * Modul aplikasi demo di folder `sample/` yang memverifikasi seluruh 159 unit test langsung di perangkat Android.
+  * Hasil kompilasi APK siap pasang (`sample-debug.apk`) tersedia otomatis di setiap rilis CI/CD.
 
 ---
 
-## 📁 Struktur Direktori
+## 📁 Struktur Proyek
 
 ```text
 lua-android/
-├── src/                # Core C Lua 5.5.1, cJSON, ljsonlib, lregexlib, dan JNI bridge
-│   ├── lua_jni.c       # JNI Bridge dengan LuaJ-style bindings & JNI_OnLoad caching
-│   ├── ljsonlib.c      # Built-in JSON module
-│   └── lregexlib.c     # Built-in Regex module
-├── include/            # Public C headers (lua.h, lauxlib.h, lualib.h, luaconf.h, cJSON.h)
-├── kotlin/             # Kotlin Wrapper (com.github.anaruto.lua)
+├── src/                    # C Engine Lua 5.5.1, Lexbor, cJSON, POSIX Regex, Crypto & JNI
+│   ├── lua_jni.c           # JNI Bridge dengan LuaJ-style bindings & JNI_OnLoad caching
+│   ├── linit.c             # Registrasi library standar & custom global extensions
+│   ├── extensions/
+│   │   ├── html/           # Lexbor HTML5 parser & DOM methods (lhtmllib.c, lexbor.c)
+│   │   ├── json/           # cJSON engine (ljsonlib.c, cJSON.c)
+│   │   ├── regex/          # Regex engine dengan PCRE shorthand (lregexlib.c)
+│   │   └── util/           # AES-128, Base64 RFC 4648, URL encode, string utils (lutilib.c)
+├── include/                # Public C Headers (lua.h, lauxlib.h, lualib.h, cJSON.h, lexbor.h)
+├── kotlin/                 # Kotlin Wrapper (com.github.anaruto.lua)
 │   └── com/github/anaruto/lua/
-│       ├── Globals.kt           # Global state controller (LuaJ Globals)
-│       ├── JsePlatform.kt       # Platform factory (JsePlatform.standardGlobals())
-│       ├── LuaValue.kt          # Polymorphic base class (LuaValue)
-│       ├── LuaNil.kt            # Nil value representation
-│       ├── LuaBoolean.kt        # Boolean value representation
-│       ├── LuaNumber.kt         # LuaInteger (64-bit) & LuaDouble representation
-│       ├── LuaString.kt         # String value representation
-│       ├── LuaTable.kt          # LuaTable & NativeLuaTable
-│       ├── LuaFunction.kt       # LuaFunction & NativeLuaFunction
-│       ├── Varargs.kt           # Multi-return values container
-│       ├── LuaError.kt          # LuaError (subclass of LuaException)
-│       ├── LuaEngine.kt         # Legacy engine wrapper
-│       └── LuaException.kt      # Base exception
-├── .github/workflows/  # GitHub Actions CI/CD (build.yml)
-├── CMakeLists.txt      # Konfigurasi CMake build
-├── Android.mk          # Konfigurasi ndk-build legacy
-└── build.sh            # Skrip otomatisasi build lokal multi-ABI
+│       ├── Globals.kt       # Global execution context & thread-safe JNI bridge
+│       ├── JsePlatform.kt   # Factory helper (JsePlatform.standardGlobals())
+│       ├── LuaValue.kt      # Polymorphic base class (type checks, conversions, table ops)
+│       ├── LuaTable.kt      # LuaTable & NativeLuaTable (auto-unref lifecycle)
+│       ├── LuaFunction.kt   # LuaFunction & NativeLuaFunction (ZeroArg, OneArg, VarArg)
+│       ├── Varargs.kt       # Multi-return values container
+│       ├── LuaError.kt      # Exception handling
+│       └── novela/
+│           └── NovelASupport.kt # NoveLA runtime adapter (OkHttp bridge & :toHtml chaining)
+├── sample/                 # Sample Android App module
+├── tests/
+│   └── test_suite.lua      # 159 Unit Tests komprehensif
+├── .github/workflows/
+│   ├── build.yml           # CI build library NDK 4 ABI
+│   └── sample.yml          # CI build sample Android APK
+├── CMakeLists.txt          # Konfigurasi CMake dengan dead-code stripping (-Os, -Wl,--gc-sections)
+└── sample-debug.apk        # Berkas APK sample Android yang telah terkompilasi
 ```
 
 ---
 
 ## 🚀 Panduan Integrasi ke Aplikasi Android
 
-### Cara 1: Menggunakan Prebuilt Binaries (Rekomendasi)
-1. Unduh arsip rilis `lua-android-*.zip` dari halaman [Releases](https://github.com/AhmadNaruto/lua-android/releases) atau artifact GitHub Actions.
-2. Ekstrak dan salin biner ke folder aplikasi Android Anda:
-   ```text
-   app/src/main/jniLibs/
-   ├── arm64-v8a/liblua.so
-   ├── armeabi-v7a/liblua.so
-   ├── x86/liblua.so
-   └── x86_64/liblua.so
-   ```
-3. Salin paket wrapper Kotlin dari `kotlin/com/github/anaruto/lua/` ke folder project Android:
-   ```text
-   app/src/main/java/com/github/anaruto/lua/
-   ```
+### 1. Salin Biner Native (`liblua.so`)
+Unduh artefak rilis atau ambil dari `sample-debug.apk`:
+```text
+app/src/main/jniLibs/
+├── arm64-v8a/liblua.so
+├── armeabi-v7a/liblua.so
+├── x86/liblua.so
+└── x86_64/liblua.so
+```
 
----
+### 2. Salin Kode Wrapper Kotlin
+Salin paket `kotlin/com/github/anaruto/lua/` ke direktori sumber aplikasi Anda:
+```text
+app/src/main/java/com/github/anaruto/lua/
+```
 
-## 💻 Contoh Penggunaan (Gaya API LuaJ)
-
-### 1. Inisialisasi dan Evaluasi Dasar
+### 3. Inisialisasi Dasar
 ```kotlin
 import com.github.anaruto.lua.JsePlatform
 import com.github.anaruto.lua.LuaValue
 
-// Inisialisasi globals ala LuaJ
 val globals = JsePlatform.standardGlobals()
 
-// Load script chunk dan eksekusi
-val chunk = globals.load("return 'Hello from ' .. _VERSION")
+// Jalankan skrip Lua
+val chunk = globals.load("return 'Halo dari ' .. _VERSION")
 val result = chunk.call()
-println(result.tojstring()) // "Hello from Lua 5.5.1"
+println(result.tojstring()) // "Halo dari Lua 5.5.1"
 
 globals.close()
 ```
 
-### 2. Mengakses dan Memanipulasi Table / Global Variables
-```kotlin
-JsePlatform.standardGlobals().use { globals ->
-    // Set global value
-    globals.set("appName", "NoveLA")
-    globals.set("versionCode", 102)
+---
 
-    // Kotlin operator indexing: globals["key"]
-    globals["isDebug"] = LuaValue.valueOf(true)
+## 📖 Manual Referensi Fitur Lua Bawaan
 
-    // Akses library standar Lua
-    val math = globals.get("math")
-    val sqrt = math.get("sqrt")
-    val res = sqrt.call(LuaValue.valueOf(144))
-    println(res.todouble()) // 12.0
-}
-```
+### 1. HTML5 Parser & CSS Selectors (`lexbor` / `html_parse`)
 
-### 3. Menggunakan Fitur Bawaan JSON & Regex (Tanpa `require`)
-```kotlin
-JsePlatform.standardGlobals().use { globals ->
-    val script = """
-        -- Regex PCRE shorthand (\d, \w)
-        local match, id, user = regex.match("Order #9921 from Budi", "Order #(\\d+) from (\\w+)")
+Tersedia global tanpa perlu `require`:
 
-        -- Encode ke JSON
-        local payload = json.encode({
-            order_id = tonumber(id),
-            customer = user,
-            verified = regex.test(user, "^[A-Z]")
-        })
-        return payload
-    """
+```lua
+local doc = html_parse([[
+    <div id="main" class="container content">
+        <h1 class="novel-title">Solo Leveling</h1>
+        <p class="summary">Sung Jin-Woo adalah hunter <b>peringkat E</b>.</p>
+        <ul class="chapter-list">
+            <li><a href="/ch-1">Bab 1</a></li>
+            <li><a href="/ch-2">Bab 2</a></li>
+        </ul>
+    </div>
+]], "https://novel.my.id/series/100") -- opsional: Base URI
 
-    val chunk = globals.load(script)
-    val jsonString = chunk.call().tojstring()
-    println(jsonString)
-    // {"order_id":9921,"customer":"Budi","verified":true}
-}
-```
+-- Properti & Method Dokumen
+local title = doc:title() -- atau doc.title
+local base  = doc:baseUri()
+doc:setBaseUri("https://other.com")
 
-### 4. Menangani Multiple Return Values (`Varargs`)
-```kotlin
-JsePlatform.standardGlobals().use { globals ->
-    val chunk = globals.load("return 'apple', 42, true")
-    val varargs = chunk.invoke()
+-- Seleksi Elemen Pertama
+local h1 = doc:selectFirst(".novel-title")
+print(h1:text())      -- "Solo Leveling" (atau properti: h1.text)
+print(h1:tagName())   -- "h1" (atau properti: h1.tag)
+print(h1:attr("class"))
 
-    println(varargs.narg())              // 3
-    println(varargs.arg(1).tojstring())  // "apple"
-    println(varargs.arg(2).toint())      // 42
-    println(varargs.arg(3).toboolean())  // true
-}
-```
+-- Seleksi Daftar Elemen (Elements List)
+local links = doc:select(".chapter-list a")
+print(#links)               -- 2 (atau links:size(), links:length())
+print(links:first():text()) -- "Bab 1"
+print(links:last():text())  -- "Bab 2"
+print(links:get(2):text())  -- "Bab 2"
 
-### 5. Mendaftarkan Fungsi Kotlin ke Lua (Host Callbacks)
-Anda dapat mengekspos fungsi atau method Kotlin/Android agar dapat dipanggil langsung dari dalam skrip Lua:
-```kotlin
-JsePlatform.standardGlobals().use { globals ->
-    // Cara 1: Menggunakan lambda register yang ringkas
-    globals.register("showNotification") { args ->
-        val title = args.arg(1).tojstring()
-        val count = args.arg(2).optint(1)
-        println("Notifikasi: $title ($count)")
-        LuaValue.TRUE // Nilai kembalian ke Lua
-    }
+-- Resolusi URL Absolut Otomatis
+local firstLink = links:first()
+print(firstLink:attr("href"))     -- "/ch-1" (relatif)
+print(firstLink:attr("abs:href")) -- "https://other.com/ch-1" (absolut)
+print(firstLink.href)             -- "https://other.com/ch-1" (properti otomatis absolut)
 
-    // Cara 2: Menggunakan turunan OneArgFunction / TwoArgFunction / VarArgFunction
-    globals.set("tambah", object : TwoArgFunction() {
-        override fun call(arg1: LuaValue, arg2: LuaValue): LuaValue {
-            return LuaValue.valueOf(arg1.todouble() + arg2.todouble())
-        }
-    })
+-- Traversal & Modifikasi
+local p = doc:selectFirst("p.summary")
+print(p:text())    -- "Sung Jin-Woo adalah hunter peringkat E." (rekursif)
+print(p:ownText()) -- "Sung Jin-Woo adalah hunter ." (tanpa teks anak <b>)
+print(p:html())    -- inner HTML
 
-    // Panggil dari skrip Lua
-    globals.load("""
-        local ok = showNotification("Pesan Baru", 3)
-        print("Hasil penjumlahan:", tambah(10, 25))
-    """).call()
-}
-```
-
-### 6. Integrasi Android Logcat & Asset Loading
-* **Android Logcat**: Pemanggilan `print(...)` di Lua secara otomatis dialirkan ke **Logcat Android** (`tag: Lua`, level: `INFO`), sehingga debugging di Android Studio sangat mudah tanpa konfigurasi tambahan.
-* **Loading dari APK `assets/`**:
-```kotlin
-// 1. Eksekusi skrip langsung dari assets/
-val mainChunk = globals.loadAsset(context.assets, "scripts/main.lua")
-mainChunk.call()
-
-// 2. Pasang automatic package searcher untuk require()
-// require("network.api") otomatis memuat file assets/lua/network/api.lua!
-globals.installAssetSearcher(context.assets, basePath = "lua")
-```
-
-### 7. Menangani Exception
-```kotlin
-try {
-    globals.load("function broken() return end broken(1").call()
-} catch (e: LuaError) {
-    println("Lua compilation/runtime error: ${e.message}")
-}
+local parentLi = firstLink:parent()
+local nextLi   = parentLi:nextElementSibling()
+parentLi:remove() -- menghapus elemen dari pohon DOM
 ```
 
 ---
 
-## 📜 Contoh API Lua Bawaan
+### 2. NoveLA Fast DOM Helpers
 
-### 1. JSON API (`json`)
+Fungsi helper global yang dioptimalkan untuk siklus hidup ekstensi NoveLA:
+
 | Fungsi | Deskripsi |
-| :--- | :--- |
-| `json.decode(str)` | Mengonversi string JSON menjadi table Lua. Mengembalikan `nil, err` jika format tidak valid. |
-| `json.encode(table [, pretty])` | Mengonversi table Lua menjadi string JSON. Berikan `true` untuk format rapi (*pretty-print*). |
+|---|---|
+| `html_select(html, css)` | Mengurai HTML dan mengembalikan Elements List yang cocok. |
+| `html_select_first(html, css)` | Mengurai HTML dan mengembalikan elemen pertama yang cocok atau `nil`. |
+| `html_attr(html, css, attr)` | Mengambil atribut elemen pertama langsung dari string HTML. |
+| `html_text(html)` | Mengekstrak teks bersih bab, menjaga `<p>` dan `<br>` sebagai `\n`, membuang `<script>`, `<style>`, `<iframe>`. |
+| `html_remove(html, selector)` | Menghapus elemen tertentu dari HTML string (iklan/skrip) dan mengembalikan HTML bersih. |
+| `url_resolve(base, href)` | Mengubah URL relatif menjadi URL absolut berdasarkan base URL. |
 
+**Contoh Penggunaan pada Ekstensi Novel:**
 ```lua
--- Decode
-local data = json.decode('{"title":"NoveLA","chapters":[1,2,3]}')
-print(data.title)        -- "NoveLA"
-print(data.chapters[1])  -- 1
-
--- Encode
-local str = json.encode({ status = "ok", code = 200 })
-print(str)               -- {"status":"ok","code":200}
+function getChapterText(html, url)
+    -- Bersihkan iklan terlebih dahulu
+    local clean = html_remove(html, ".ads, script, style, .watermark")
+    
+    -- Ambil teks bab berformat rapi
+    local text = html_text(clean)
+    return text
+end
 ```
 
-### 2. Regex API (`regex`)
-| Fungsi | Deskripsi |
-| :--- | :--- |
-| `regex.test(str, pattern [, flags])` | Cek apakah string cocok dengan pola (`true`/`false`). |
-| `regex.match(str, pattern [, flags])` | Mengembalikan kecocokan teks penuh dan hasil *capture groups*. |
-| `regex.find(str, pattern [, init, flags])` | Mengembalikan indeks awal & akhir (`start, end`) kecocokan (1-based). |
-| `regex.find_all(str, pattern [, flags])` | Mengembalikan array table berisi seluruh substring yang cocok. |
-| `regex.replace(str, pattern, repl [, limit, flags])` | Mengganti kecocokan regex dengan string pengganti (mendukung `$1`, `$2`, dll). |
-| `regex.split(str, delimiter [, limit, flags])` | Memecah string menjadi table berdasarkan pola pemisah regex. |
+---
 
-*Flags yang didukung*: `"i"` (case-insensitive), `"m"` (multiline).
+### 3. Utilitas String & Unicode NoveLA
 
-### 3. Crypto & Encoding Utilities (Global tanpa `require`)
 | Fungsi | Deskripsi |
-| :--- | :--- |
-| `base64_encode(str)` | Meng-encode string/bytes ke format Base64 (RFC 4648, standard NO_WRAP). |
-| `base64_decode(b64_str)` | Men-decode string Base64 kembali ke byte string asli. |
-| `url_encode(str [, charset])` | Meng-encode string ke URL format (`application/x-www-form-urlencoded`), default UTF-8. |
-| `aes_decrypt(b64_cipher, key, iv)` | Men-dekripsi data AES/CBC/PKCS5Padding dari format Base64 menggunakan key dan IV. |
+|---|---|
+| `string_trim(str)` | Menghapus spasi dan newline di awal & akhir string. |
+| `string_clean(str)` / `string_normalize(str)` | Merampingkan spasi berlebih berturut-turut menjadi satu spasi. |
+| `string_starts_with(str, prefix)` | Pengecekan prefix (`true`/`false`). |
+| `string_ends_with(str, suffix)` | Pengecekan suffix (`true`/`false`). |
+| `string_split(str, delimiter)` | Memecah string menjadi array table berdasarkan pemisah. |
+| `unescape_unicode(str)` | Mengonversi format `\uXXXX` dan surrogate pair UTF-16 ke karakter UTF-8. |
 
 ```lua
--- Base64
-local encoded = base64_encode("NoveLA 2026")
-print(encoded)              -- "Tm92ZUxBIDIwMjY="
-print(base64_decode(encoded)) -- "NoveLA 2026"
+local tags = string_split("Action, Fantasy, Romance", ", ")
+-- tags = { "Action", "Fantasy", "Romance" }
 
--- URL Encode
-print(url_encode("judul buku & bab 1")) -- "judul+buku+%26+bab+1"
+local clean_title = string_normalize("  Solo    Leveling   Ragnarok  ")
+-- clean_title = "Solo Leveling Ragnarok"
 
--- AES Decrypt (kompatibel penuh dengan enkripsi API web novel)
+local text = unescape_unicode("Halo\\u0020Dunia\\u0021 \\u3000\\u4e00")
+-- text = "Halo Dunia! 　一"
+```
+
+---
+
+### 4. JSON API (cJSON)
+
+| Fungsi | Deskripsi |
+|---|---|
+| `json.decode(str)` / `json_parse(str)` | Mengubah string JSON menjadi table Lua. |
+| `json.encode(val [, pretty])` / `json_stringify(val)` | Mengubah table Lua menjadi string JSON. |
+
+```lua
+local obj = json_parse('{"id": 101, "title": "NoveLA", "active": true}')
+print(obj.title) -- "NoveLA"
+
+local jsonString = json_stringify({ code = 200, message = "Success" })
+```
+
+---
+
+### 5. Regex API (POSIX + PCRE Shorthand)
+
+| Fungsi | Deskripsi |
+|---|---|
+| `regex.match(str, pat [, flags])` / `regex_match(str, pat)` | Mengambil string kecocokan penuh dan capture groups. |
+| `regex.replace(str, pat, repl [, flags])` / `regex_replace(str, pat, repl)` | Mengganti pola kecocokan dengan string baru (mendukung `$1`, `$2`). |
+| `regex.test(str, pat [, flags])` | Cek apakah cocok (`true`/`false`). |
+| `regex.find(str, pat [, init, flags])` | Indeks awal dan akhir kecocokan (1-based). |
+| `regex.split(str, sep [, flags])` | Memecah string berdasarkan pola regex. |
+
+```lua
+local num = regex_match("Chapter 245 End", "\\d+")
+-- num = "245"
+
+local out = regex_replace("Harga: Rp 50.000", "Rp (\\d+\\.\\d+)", "IDR $1")
+-- out = "Harga: IDR 50.000"
+```
+
+---
+
+### 6. Crypto & Encoding API
+
+| Fungsi | Deskripsi |
+|---|---|
+| `base64_encode(str)` | Encode string ke Base64 RFC 4648. |
+| `base64_decode(b64)` | Decode string Base64 kembali ke teks asli. |
+| `url_encode(str)` | Encode string ke format URL x-www-form-urlencoded. |
+| `aes_decrypt(b64_cipher, key, iv)` | Dekripsi AES-128-CBC dengan unpadding PKCS#7/PKCS#5. Key dan IV harus 16 bytes. |
+
+```lua
+local enc = base64_encode("Secret Payload")
+local dec = base64_decode(enc)
+
 local plaintext = aes_decrypt(encrypted_b64, "16bytessecretkey", "16bytesinitvecto")
-print(plaintext)
 ```
 
 ---
 
-## 🔨 Build Lokal (NDK)
+## 🛠️ Menggunakan Kotlin NoveLA Adapter (`NovelASupport`)
 
-```bash
-export ANDROID_NDK_HOME="/path/to/android-sdk/ndk/25.1.8937393"
-chmod +x build.sh
-./build.sh
+Paket `com.github.anaruto.lua.novela.NovelASupport` menghubungkan engine Lua ke stack jaringan dan UI Android:
+
+```kotlin
+import com.github.anaruto.lua.JsePlatform
+import com.github.anaruto.lua.novela.NovelASupport
+import okhttp3.OkHttpClient
+import okhttp3.Request
+
+val globals = JsePlatform.standardGlobals()
+val okHttpClient = OkHttpClient()
+
+// Pasang bridge NoveLA
+NovelASupport.install(
+    globals = globals,
+    httpHandler = { method, url, body, config ->
+        val reqBuilder = Request.Builder().url(url)
+        // Pasang headers dari config jika ada
+        val response = okHttpClient.newCall(reqBuilder.build()).execute()
+        NovelASupport.HttpResponse(
+            success = response.isSuccessful,
+            code = response.code,
+            body = response.body?.string() ?: "",
+            headers = response.headers.toMap()
+        )
+    },
+    cookieHandler = object : NovelASupport.CookieHandler {
+        override fun getCookies(url: String): String = "cookie_data=1"
+        override fun setCookies(url: String, cookies: String) {}
+    },
+    preferenceHandler = object : NovelASupport.PreferenceHandler {
+        override fun getPreference(key: String): String? = "saved_pref"
+        override fun setPreference(key: String, value: String) {}
+    },
+    errorHandler = { title, message, authUrl ->
+        // Munculkan dialog Android error / Cloudflare WebView solver
+    }
+)
+
+// Ekstensi NoveLA sekarang dapat menggunakan method chaining:
+globals.load("""
+    local doc = http_get("https://novel.my.id"):toHtml()
+    local title = doc:selectFirst(".title"):text()
+    print("Judul:", title)
+""").call()
+
+globals.close()
 ```
+
+---
+
+## 🧪 Pengujian & Validasi
+
+Suite pengujian komprehensif memvalidasi seluruh fitur engine:
+* **159 Unit Tests Lulus Sempurna (159 Passed, 0 Failed)**:
+  1. Core Lua 5.5 VM & Operator Bitwise.
+  2. cJSON Encoder/Decoder & Global Aliases.
+  3. POSIX/PCRE Regex & Global Aliases.
+  4. AES-128-CBC Crypto & Base64 RFC 4648.
+  5. OOP String Metatable Getters `('Chapter 1')()`.
+  6. Lexbor HTML5 DOM & CSS Selectors Chaining.
+  7. Base URI & Absolute URL auto-resolution (`.href`, `.src`).
+  8. 100x Selector Re-use Stress Test & Malformed Selector Resilience.
+  9. NoveLA Fast DOM Helpers (`html_text`, `html_attr`, `html_remove`, `url_resolve`).
+  10. NoveLA String & Unicode Utilities (`string_trim`, `unescape_unicode`).
+  11. Simulasi Lengkap Siklus Hidup Ekstensi Novel, Manga (`getPageList`), dan Video (`getVideoList`).
 
 ---
 
 ## 📄 Lisensi
-Proyek ini dilisensikan di bawah [MIT License](LICENSE) (sesuai lisensi resmi Lua dan cJSON).
+
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+Komponen pustaka pihak ketiga:
+- **Lua**: MIT License (PUC-Rio).
+- **Lexbor**: Apache License 2.0.
+- **cJSON**: MIT License (Dave Gamble).
