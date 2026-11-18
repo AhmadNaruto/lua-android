@@ -1,0 +1,8 @@
+build/
+dist/
+tests/test_runner
+*.o
+*.so
+*.a
+*.zip
+*.tar.gz

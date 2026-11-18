@@ -81,6 +81,11 @@ jobs:
           done
           echo "✓ All 4 ABI targets built and verified successfully!"
 
+      - name: Run Functional Test Suite
+        run: |
+          chmod +x tests/run_tests.sh
+          ./tests/run_tests.sh
+
       - name: Create Distribution Archives
         run: |
           cd dist
