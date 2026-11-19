@@ -79,28 +79,26 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 2. Initialize Lua environment (adapting LuaJ's JsePlatform)
-                val globals = JsePlatform.standardGlobals()
+                JsePlatform.standardGlobals().use { globals ->
+                    // 3. Hook print() to stream logs to Android UI in real-time
+                    globals.register("print") { args ->
+                        val sb = StringBuilder()
+                        for (i in 1..args.narg()) {
+                            if (i > 1) sb.append("\t")
+                            sb.append(args.arg(i).tojstring())
+                        }
+                        val line = sb.toString()
 
-                // 3. Hook print() to stream logs to Android UI in real-time
-                globals.register("print") { args ->
-                    val sb = StringBuilder()
-                    for (i in 1..args.narg()) {
-                        if (i > 1) sb.append("\t")
-                        sb.append(args.arg(i).tojstring())
+                        runOnUiThread {
+                            appendLog(line)
+                        }
+                        LuaValue.NIL
                     }
-                    val line = sb.toString()
 
-                    runOnUiThread {
-                        appendLog(line)
-                    }
-                    LuaValue.NIL
+                    // 4. Compile and execute test suite
+                    val chunk = globals.load(script, "test_suite.lua")
+                    chunk.call()
                 }
-
-                // 4. Compile and execute test suite
-                val chunk = globals.load(script, "test_suite.lua")
-                chunk.call()
-
-                globals.close()
 
                 val duration = System.currentTimeMillis() - startTime
                 withContext(Dispatchers.Main) {

@@ -80,11 +80,6 @@ class NativeLuaFunction internal constructor(
             }
         }
     }
-
-    @Suppress("DEPRECATION")
-    protected fun finalize() {
-        close()
-    }
 }
 
 /**

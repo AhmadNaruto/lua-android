@@ -146,9 +146,4 @@ class NativeLuaTable internal constructor(
             }
         }
     }
-
-    @Suppress("DEPRECATION")
-    protected fun finalize() {
-        close()
-    }
 }

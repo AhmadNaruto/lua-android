@@ -61,8 +61,55 @@ typedef struct {
     jobject globalRef;
 } CallbackSentinel;
 
+#include <pthread.h>
+
+#define MAX_ACTIVE_STATES 128
+static lua_State *g_active_states[MAX_ACTIVE_STATES] = {NULL};
+static pthread_mutex_t g_states_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void register_active_state(lua_State *L) {
+    if (L == NULL) return;
+    pthread_mutex_lock(&g_states_mutex);
+    for (int i = 0; i < MAX_ACTIVE_STATES; i++) {
+        if (g_active_states[i] == NULL) {
+            g_active_states[i] = L;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_states_mutex);
+}
+
+static void unregister_active_state(lua_State *L) {
+    if (L == NULL) return;
+    pthread_mutex_lock(&g_states_mutex);
+    for (int i = 0; i < MAX_ACTIVE_STATES; i++) {
+        if (g_active_states[i] == L) {
+            g_active_states[i] = NULL;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_states_mutex);
+}
+
+static int is_active_state(lua_State *L) {
+    if (L == NULL) return 0;
+    int found = 0;
+    pthread_mutex_lock(&g_states_mutex);
+    for (int i = 0; i < MAX_ACTIVE_STATES; i++) {
+        if (g_active_states[i] == L) {
+            found = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&g_states_mutex);
+    return found;
+}
+
 static lua_State *to_lua_state(jlong ptr) {
-    return (lua_State *)(uintptr_t)ptr;
+    if (ptr == 0) return NULL;
+    lua_State *L = (lua_State *)(uintptr_t)ptr;
+    if (!is_active_state(L)) return NULL;
+    return L;
 }
 
 static JNIEnv *get_jni_env(int *should_detach) {
@@ -514,6 +561,7 @@ Java_com_github_anaruto_lua_Globals_nativeNewState(JNIEnv *env, jclass clazz) {
     (void)clazz;
     lua_State *L = luaL_newstate();
     if (L != NULL) {
+        register_active_state(L);
         luaL_openlibs(L);
         // Hook print to Android Logcat
         lua_register(L, "print", android_lua_print);
@@ -534,8 +582,10 @@ JNIEXPORT void JNICALL
 Java_com_github_anaruto_lua_Globals_nativeClose(JNIEnv *env, jclass clazz, jlong ptr) {
     (void)env;
     (void)clazz;
-    lua_State *L = to_lua_state(ptr);
-    if (L != NULL) {
+    if (ptr == 0) return;
+    lua_State *L = (lua_State *)(uintptr_t)ptr;
+    if (is_active_state(L)) {
+        unregister_active_state(L);
         lua_close(L);
     }
 }
@@ -544,7 +594,7 @@ JNIEXPORT jint JNICALL
 Java_com_github_anaruto_lua_Globals_nativeLoad(JNIEnv *env, jclass clazz, jlong ptr, jstring jscript, jstring jname) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jscript == NULL) {
+    if (!is_active_state(L) || jscript == NULL) {
         throw_lua_error(env, "Invalid Lua state or null script");
         return -1;
     }
@@ -570,7 +620,7 @@ JNIEXPORT jint JNICALL
 Java_com_github_anaruto_lua_Globals_nativeLoadFile(JNIEnv *env, jclass clazz, jlong ptr, jstring jpath) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jpath == NULL) {
+    if (!is_active_state(L) || jpath == NULL) {
         throw_lua_error(env, "Invalid Lua state or null file path");
         return -1;
     }
@@ -594,7 +644,7 @@ JNIEXPORT jobjectArray JNICALL
 Java_com_github_anaruto_lua_Globals_nativeInvoke(JNIEnv *env, jclass clazz, jlong ptr, jint funcRef, jobjectArray jargs) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || funcRef == -1) {
+    if (!is_active_state(L) || funcRef == -1) {
         throw_lua_error(env, "Invalid Lua state or invalid function reference");
         return NULL;
     }
@@ -647,7 +697,7 @@ JNIEXPORT jobject JNICALL
 Java_com_github_anaruto_lua_Globals_nativeGetGlobal(JNIEnv *env, jclass clazz, jlong ptr, jstring jname) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jname == NULL) {
+    if (!is_active_state(L) || jname == NULL) {
         return (*env)->GetStaticObjectField(env, g_class_LuaValue, g_fid_NIL);
     }
 
@@ -664,7 +714,7 @@ JNIEXPORT void JNICALL
 Java_com_github_anaruto_lua_Globals_nativeSetGlobal(JNIEnv *env, jclass clazz, jlong ptr, jstring jname, jobject jval) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jname == NULL) return;
+    if (!is_active_state(L) || jname == NULL) return;
 
     const char *name = (*env)->GetStringUTFChars(env, jname, NULL);
     push_lua_value(env, L, jval);
@@ -676,7 +726,7 @@ JNIEXPORT jobject JNICALL
 Java_com_github_anaruto_lua_Globals_nativeTableGet(JNIEnv *env, jclass clazz, jlong ptr, jint tableRef, jobject jkey) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || tableRef == -1) {
+    if (!is_active_state(L) || tableRef == -1) {
         return (*env)->GetStaticObjectField(env, g_class_LuaValue, g_fid_NIL);
     }
 
@@ -697,7 +747,7 @@ JNIEXPORT void JNICALL
 Java_com_github_anaruto_lua_Globals_nativeTableSet(JNIEnv *env, jclass clazz, jlong ptr, jint tableRef, jobject jkey, jobject jval) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || tableRef == -1) return;
+    if (!is_active_state(L) || tableRef == -1) return;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, tableRef);
     if (!lua_istable(L, -1)) {
@@ -716,7 +766,7 @@ Java_com_github_anaruto_lua_Globals_nativeTableLength(JNIEnv *env, jclass clazz,
     (void)env;
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || tableRef == -1) return 0;
+    if (!is_active_state(L) || tableRef == -1) return 0;
 
     lua_rawgeti(L, LUA_REGISTRYINDEX, tableRef);
     if (!lua_istable(L, -1)) {
@@ -734,7 +784,7 @@ JNIEXPORT jobjectArray JNICALL
 Java_com_github_anaruto_lua_Globals_nativeTableKeys(JNIEnv *env, jclass clazz, jlong ptr, jint tableRef) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || tableRef == -1) {
+    if (!is_active_state(L) || tableRef == -1) {
         return (*env)->NewObjectArray(env, 0, g_class_LuaValue, NULL);
     }
 
@@ -770,7 +820,7 @@ Java_com_github_anaruto_lua_Globals_nativeNewTable(JNIEnv *env, jclass clazz, jl
     (void)env;
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL) return -1;
+    if (!is_active_state(L)) return -1;
     lua_newtable(L);
     int ref = luaL_ref(L, LUA_REGISTRYINDEX);
     return (jint)ref;
@@ -780,7 +830,7 @@ JNIEXPORT jobjectArray JNICALL
 Java_com_github_anaruto_lua_Globals_nativeDoString(JNIEnv *env, jclass clazz, jlong ptr, jstring jscript) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jscript == NULL) {
+    if (!is_active_state(L) || jscript == NULL) {
         throw_lua_error(env, "Invalid Lua state or null script");
         return NULL;
     }
@@ -820,7 +870,7 @@ JNIEXPORT jobjectArray JNICALL
 Java_com_github_anaruto_lua_Globals_nativeDoFile(JNIEnv *env, jclass clazz, jlong ptr, jstring jpath) {
     (void)clazz;
     lua_State *L = to_lua_state(ptr);
-    if (L == NULL || jpath == NULL) {
+    if (!is_active_state(L) || jpath == NULL) {
         throw_lua_error(env, "Invalid Lua state or null file path");
         return NULL;
     }
